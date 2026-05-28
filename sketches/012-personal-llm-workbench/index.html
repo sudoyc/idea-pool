@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Personal LLM Workbench - Project Idea Pool</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000000;
+      --side: #09090b;
+      --surface: #18181b;
+      --surface-2: #111116;
+      --hover: #27272a;
+      --line: rgba(255,255,255,.07);
+      --line-strong: rgba(192,132,252,.34);
+      --text: #ffffff;
+      --body: #e4e4e7;
+      --muted: #a1a1aa;
+      --dim: #71717a;
+      --accent: #c084fc;
+      --accent-soft: rgba(192,132,252,.14);
+      --green: #86efac;
+      --yellow: #fde68a;
+      --red: #fca5a5;
+      --sans: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--body); font-family: var(--sans); overflow: hidden; }
+    button, input, textarea { font: inherit; }
+    .app { height: 100vh; display: grid; grid-template-columns: 318px minmax(0, 1fr) 330px; }
+    .left, .right { background: var(--side); min-width: 0; overflow: hidden; }
+    .left { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .right { border-left: 1px solid var(--line); overflow: auto; }
+    .brand { padding: 24px 20px 18px; border-bottom: 1px solid var(--line); }
+    .brand-line { display: flex; align-items: center; gap: 8px; color: var(--accent); font: 650 11px/1 var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .deploy { margin-top: 17px; border: 1px solid var(--line); background: #050506; border-radius: 10px; padding: 11px; }
+    .deploy-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .deploy-row + .deploy-row { margin-top: 8px; }
+    .pill { font: 650 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 5px 7px; color: var(--dim); white-space: nowrap; }
+    .pill.ok { color: var(--green); border-color: rgba(134,239,172,.3); background: rgba(134,239,172,.06); }
+    .prompt { padding: 16px 14px; border-bottom: 1px solid var(--line); }
+    .label { display: block; color: var(--dim); font: 650 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+    .prompt textarea { width: 100%; min-height: 82px; resize: vertical; border: 1px solid var(--line); background: #050506; color: var(--body); border-radius: 9px; outline: 0; padding: 10px; font-size: 13px; line-height: 1.55; }
+    .prompt textarea:focus { border-color: var(--line-strong); }
+    .prompt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .prompt-actions button, .ghost { border: 1px solid var(--line); background: #050506; color: var(--muted); border-radius: 8px; padding: 9px 10px; font-size: 12px; font-weight: 650; cursor: pointer; }
+    .prompt-actions button.primary { color: #eadcff; background: var(--accent-soft); border-color: var(--line-strong); }
+    .section-title { padding: 17px 18px 9px; color: var(--dim); font: 650 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    .idea-list { overflow: auto; padding: 0 10px 20px; }
+    .item { padding: 13px 12px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 9px; cursor: pointer; position: relative; }
+    .item:hover { background: var(--surface); }
+    .item.active { background: var(--surface); border-color: var(--line-strong); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+    .item.active:before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 4px; background: var(--accent); }
+    .item h3 { margin: 0 0 6px; color: var(--text); font-size: 14px; line-height: 1.35; }
+    .item p { margin: 0; color: var(--dim); font-size: 12px; line-height: 1.45; }
+    .item-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; color: var(--dim); font: 600 11px/1 var(--mono); }
+    .source.llm { color: var(--accent); }
+    .main { overflow: auto; min-width: 0; }
+    .doc { max-width: 860px; margin: 0 auto; padding: 66px 52px 92px; }
+    .doc-top { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 30px; }
+    .crumb { color: var(--accent); font: 650 12px/1.2 var(--mono); letter-spacing: .05em; }
+    .status-stack { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    h1 { margin: 0 0 21px; color: var(--text); font-size: clamp(34px, 4vw, 44px); line-height: 1.08; letter-spacing: -.04em; }
+    .lead { margin: 0 0 38px; color: var(--body); font-size: 16px; line-height: 1.78; }
+    .notice { border: 1px solid var(--line); background: rgba(255,255,255,.025); border-radius: 12px; padding: 14px 15px; margin-bottom: 34px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+    .notice b { color: var(--text); font-size: 13px; }
+    .notice span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .notice button { border: 1px solid var(--line-strong); background: var(--accent-soft); color: #eadcff; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-weight: 750; cursor: pointer; }
+    .section { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 34px; }
+    .section h2 { margin: 0 0 13px; color: var(--text); font-size: 19px; line-height: 1.25; letter-spacing: -.02em; }
+    .section p { margin: 0; color: var(--muted); font-size: 15.5px; line-height: 1.78; }
+    .diff { margin-top: 14px; border-left: 2px solid var(--accent); padding-left: 14px; color: #d9c7f3; font-size: 14px; line-height: 1.65; }
+    .action-block { margin-top: 38px; border: 1px solid var(--line-strong); background: #050505; border-radius: 12px; overflow: hidden; }
+    .action-head { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 12px 15px; color: var(--dim); font: 650 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .action-body { padding: 19px 17px; color: var(--body); font: 500 14px/1.65 var(--mono); }
+    .cmd { color: var(--accent); margin-right: 8px; }
+    .right-inner { padding: 24px 18px 34px; }
+    .right h2 { margin: 0 0 14px; color: var(--text); font-size: 14px; letter-spacing: -.01em; }
+    .panel { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
+    .auth-card { border: 1px solid var(--line); border-radius: 11px; background: #050506; padding: 13px; }
+    .auth-card + .auth-card { margin-top: 10px; }
+    .auth-card b { display: block; color: var(--text); font-size: 13px; margin-bottom: 7px; }
+    .auth-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .note textarea { width: 100%; min-height: 112px; resize: vertical; border: 1px solid var(--line); background: #050506; color: var(--body); border-radius: 9px; padding: 10px; outline: 0; font-size: 13px; line-height: 1.55; }
+    .check { display: flex; gap: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; cursor: pointer; margin-top: 11px; }
+    .box { width: 15px; height: 15px; border: 1px solid rgba(192,132,252,.55); margin-top: 2px; flex: 0 0 auto; display: grid; place-items: center; color: #050506; }
+    .check.done { color: var(--dim); text-decoration: line-through; }
+    .check.done .box { background: var(--accent); border-color: var(--accent); }
+    .check.done .box:before { content: "✓"; color: #050506; font-size: 11px; font-weight: 900; }
+    .deploy-code { border: 1px solid var(--line); border-radius: 10px; background: #050506; padding: 12px; color: var(--muted); font: 500 12px/1.65 var(--mono); overflow-wrap: anywhere; }
+    .toast { position: fixed; right: 18px; bottom: 18px; opacity: 0; transform: translateY(8px); transition: .18s; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; color: var(--text); font-size: 13px; }
+    .toast.show { opacity: 1; transform: none; }
+    @media (max-width: 1120px) { .app { grid-template-columns: 318px minmax(0,1fr); } .right { display: none; } }
+    @media (max-width: 760px) { html, body { overflow: auto; } .app { display: block; height: auto; } .left { border-right: 0; border-bottom: 1px solid var(--line); } .idea-list { display: flex; overflow-x: auto; } .item { min-width: 245px; } .doc { padding: 42px 22px; } .notice { grid-template-columns: 1fr; } .doc-top { display: block; } .status-stack { justify-content: flex-start; margin-top: 12px; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="left">
+      <div class="brand">
+        <div class="brand-line"><span class="dot"></span>Personal Idea Workbench</div>
+        <div class="deploy">
+          <div class="deploy-row"><span>Auth</span><span class="pill ok">Access Token</span></div>
+          <div class="deploy-row"><span>LLM</span><span class="pill ok">Completion Only</span></div>
+          <div class="deploy-row"><span>Deploy</span><span class="pill">Docker / VPS</span></div>
+        </div>
+      </div>
+      <section class="prompt">
+        <label class="label" for="brief">Local generation brief</label>
+        <textarea id="brief">今晚 2 小时，想做一个能长期自用的开发者外脑。React + TypeScript，本地优先；LLM 只用于补全 idea，不负责选题。</textarea>
+        <div class="prompt-actions">
+          <button id="localGenerate">Local rank</button>
+          <button class="primary" id="llmComplete">Complete with LLM</button>
+        </div>
+      </section>
+      <div class="section-title">Sessions / Ideas</div>
+      <div class="idea-list" id="ideaList"></div>
+    </aside>
+    <main class="main">
+      <article class="doc" id="doc"></article>
+    </main>
+    <aside class="right">
+      <div class="right-inner">
+        <section class="panel">
+          <h2>Notes / Decision</h2>
+          <div class="note"><textarea id="memo">我喜欢 010 的右侧 notes/checklist，因为它把 AI 生成和我的个人判断分开。下一版要保留这个结构。</textarea></div>
+        </section>
+        <section class="panel">
+          <h2>Checklist</h2>
+          <div class="check done"><span class="box"></span><span>LLM 只补全 idea，不做全自动决策</span></div>
+          <div class="check"><span class="box"></span><span>简单鉴权即可，不做完整账户系统</span></div>
+          <div class="check"><span class="box"></span><span>支持 Docker 部署到 VPS</span></div>
+          <div class="check"><span class="box"></span><span>保留本地优先和手动选择</span></div>
+        </section>
+        <section class="panel">
+          <h2>Backend Shape</h2>
+          <div class="auth-card"><b>POST /api/ideas/:id/complete</b><p>后端拿已有 idea + brief 调 LLM，返回补全字段。</p></div>
+          <div class="auth-card"><b>Bearer token / Basic auth</b><p>个人项目，只需要一层环境变量配置的访问令牌。</p></div>
+          <div class="auth-card"><b>SQLite volume</b><p>保存 sessions、ideas、notes、checklist。可以 Docker volume 挂载。</p></div>
+        </section>
+        <section>
+          <h2>Deploy sketch</h2>
+          <div class="deploy-code">docker compose up -d<br>IDEA_POOL_TOKEN=...<br>LLM_API_KEY=...<br>DATABASE_URL=file:/data/idea-pool.db</div>
+        </section>
+      </div>
+    </aside>
+  </div>
+  <div class="toast" id="toast">LLM completion merged into selected idea</div>
+  <script>
+    const ideas = [
+      { title:'个人项目灵感池 Agent', category:'CORE PRODUCT', score:98, source:'hybrid', complete:true, summary:'把当前心情、时间和技术偏好转成可执行的 vibe coding 项目卡片。', why:'本地规则先给出稳定候选，LLM 只负责把已有 idea 补成更完整的说明、风险和行动步骤。这样既保留可控性，又能提升内容质量。', mvp:'React 三栏工作台、SQLite 持久化、简单 token 鉴权、一个 LLM completion endpoint。', diff:'LLM 补全增加了风险：scope creep、过度依赖生成文本、VPS 上 API key 管理。建议把补全结果标记为 draft，需要用户接受。', action:'先实现 /api/ideas/:id/complete，输入 idea JSON，输出 whyNow / mvpScope / firstAction / risks。' },
+      { title:'Agent Pack 生成器', category:'FOLLOW-UP ARTIFACT', score:91, source:'local', complete:false, summary:'把选中的 idea 转成给 coding agent 使用的任务包。', why:'不需要一开始就做复杂 artifact 系统。它可以作为第二个按钮，基于已经确认的 idea 和 notes 生成。', mvp:'先导出 Markdown；等 completion 稳定后再做 Agent Pack。', diff:'等待 LLM 补全后可以加入验收标准、文件边界和验证命令。', action:'定义 Agent Pack markdown 模板，不接入新的数据库表。' },
+      { title:'思路清仓工具', category:'PERSONAL OS', score:86, source:'local', complete:false, summary:'把脑中杂念倾倒出来，再整理成可执行事项、以后再说和直接丢弃。', why:'它仍然适合收进 idea library，但不是当前架构主线。', mvp:'大文本框、拆条、三段状态、键盘操作。', diff:'LLM 可以帮忙做条目归类，但这会改变产品边界，暂时不做。', action:'保持为 seed idea，不进入后端优先级。' }
+    ];
+    let selected = 0;
+    const list = document.getElementById('ideaList');
+    const doc = document.getElementById('doc');
+    const toast = document.getElementById('toast');
+    function show(text) { toast.textContent = text; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1400); }
+    function renderList() {
+      list.innerHTML = ideas.map((idea, index) => `<section class="item ${index === selected ? 'active' : ''}" data-index="${index}"><h3>${idea.title}</h3><p>${idea.summary}</p><div class="item-meta"><span>${idea.category}</span><span class="source ${idea.complete ? 'llm' : ''}">${idea.complete ? 'LLM+' : 'LOCAL'}</span></div></section>`).join('');
+    }
+    function renderDoc() {
+      const idea = ideas[selected];
+      doc.innerHTML = `<div class="doc-top"><div class="crumb">${idea.category} / SCORE ${idea.score}</div><div class="status-stack"><span class="pill ok">local seed</span><span class="pill ${idea.complete ? 'ok' : ''}">${idea.complete ? 'llm completed' : 'needs completion'}</span><span class="pill">saved sqlite</span></div></div><h1>${idea.title}</h1><p class="lead">${idea.summary}</p><div class="notice"><b>LLM role</b><span>LLM 不负责决定做什么，只补全当前选中的 idea：why now、MVP、first action、risks。</span><button id="completeBtn">Complete</button></div><section class="section"><h2>Why now</h2><p>${idea.why}</p></section><section class="section"><h2>MVP boundary</h2><p>${idea.mvp}</p></section><section class="section"><h2>LLM completion diff</h2><p>补全内容作为 draft 合并，用户仍然通过右侧 notes/checklist 做最终判断。</p><div class="diff">${idea.diff}</div></section><div class="action-block"><div class="action-head"><span>First 30 minutes</span><span>${idea.complete ? 'LLM enriched' : 'local draft'}</span></div><div class="action-body"><span class="cmd">~ $</span>${idea.action}</div></div>`;
+      document.getElementById('completeBtn').onclick = () => { idea.complete = true; idea.source = 'hybrid'; show('LLM completion merged into selected idea'); renderList(); renderDoc(); };
+    }
+    list.onclick = event => { const item = event.target.closest('.item'); if (!item) return; selected = Number(item.dataset.index); renderList(); renderDoc(); };
+    document.getElementById('localGenerate').onclick = () => show('Local deterministic ranking refreshed');
+    document.getElementById('llmComplete').onclick = () => { ideas[selected].complete = true; renderList(); renderDoc(); show('LLM completed selected idea only'); };
+    document.querySelectorAll('.check').forEach(item => item.onclick = () => item.classList.toggle('done'));
+    renderList(); renderDoc();
+  </script>
+</body>
+</html>

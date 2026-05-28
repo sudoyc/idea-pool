@@ -1,0 +1,77 @@
+# Copy-Paste Prompt for Codex / OpenCode
+
+Use this when starting the next coding-agent session from `/home/ycyc/projects/project-idea-pool`.
+
+```text
+You are working in /home/ycyc/projects/project-idea-pool.
+
+Read this handoff first:
+- docs/handoff-ui-redesign-codex-opencode.md
+
+Task:
+Complete Phase 1 only.
+
+Create five standalone HTML design mockups and their README files:
+
+- sketches/004-raycast-command-feed/index.html
+- sketches/004-raycast-command-feed/README.md
+- sketches/005-ide-split-pane/index.html
+- sketches/005-ide-split-pane/README.md
+- sketches/006-focus-deck/index.html
+- sketches/006-focus-deck/README.md
+- sketches/007-terminal-logbook/index.html
+- sketches/007-terminal-logbook/README.md
+- sketches/008-interactive-notion-block/index.html
+- sketches/008-interactive-notion-block/README.md
+
+Important boundaries:
+- Do NOT edit production React files under src/ during Phase 1.
+- Do NOT add backend/auth/LLM API/database.
+- Do NOT delete existing docs or sketches.
+- Do NOT commit node_modules or dist.
+- Focus on structure layout and typography. Purple dark mode is fine, but do not hide weak structure behind gradients/glass.
+- Avoid generic SaaS dashboard, fake metrics, card-grid slop, heavy glassmorphism.
+
+Each HTML must be complete and directly browser-openable:
+- full <!doctype html>
+- inline CSS
+- minimal inline JS
+- realistic Chinese/English mixed product content
+- at least one meaningful interaction
+- no build step
+
+Use the five Gemini directions from the handoff:
+1. Raycast / Command Feed
+2. IDE Split-Pane
+3. Focus Deck
+4. Terminal Logbook
+5. Interactive Notion Block
+
+After writing files:
+- Open or otherwise sanity-check each HTML if browser tools are available.
+- Check for no obvious horizontal overflow at around 1280px width.
+- If screenshot tooling is available, create screenshots and a contact sheet under sketches/screenshots/.
+- Report exact files created and verification performed.
+
+Do not proceed to Phase 2 React implementation unless the user explicitly selects a direction.
+```
+
+Pure prompt file for shell use:
+
+```text
+docs/agent-task-ui-redesign.txt
+```
+
+Suggested OpenCode command:
+
+```bash
+opencode run "$(cat docs/agent-task-ui-redesign.txt)"
+```
+
+Suggested Codex command:
+
+```bash
+codex exec "$(cat docs/agent-task-ui-redesign.txt)"
+```
+
+If the shell has quoting issues, paste the prompt text directly into the agent instead.

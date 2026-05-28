@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Layout A: Focus & Context</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000000; --side: #09090b; --surface: #18181b; --surface-2: #111116; --hover: #27272a;
+      --line: rgba(255,255,255,.07); --line-strong: rgba(192,132,252,.34);
+      --text: #ffffff; --body: #e4e4e7; --muted: #a1a1aa; --dim: #71717a;
+      --accent: #c084fc; --accent-soft: rgba(192,132,252,.14);
+      --green: #86efac; --yellow: #fde68a; --red: #fca5a5;
+      --sans: Inter, "Noto Sans SC", system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--body); font-family: var(--sans); overflow: hidden; }
+    button, input, textarea { font: inherit; outline: none; }
+    
+    /* 改为两栏布局 */
+    .app { height: 100vh; display: grid; grid-template-columns: 320px 1fr; }
+    
+    /* 左侧保持 Inbox 风格 */
+    .left { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+    .brand { padding: 24px 20px 18px; }
+    .brand-line { display: flex; align-items: center; gap: 8px; color: var(--accent); font: 650 11px/1 var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    
+    /* 快速录入区取代复杂的提示词区 */
+    .quick-add { padding: 0 20px 16px; border-bottom: 1px solid var(--line); }
+    .quick-add textarea { width: 100%; min-height: 80px; resize: none; border: 1px solid var(--line); background: #050506; color: var(--text); border-radius: 9px; padding: 12px; font-size: 13px; line-height: 1.5; transition: 0.2s; }
+    .quick-add textarea:focus { border-color: var(--line-strong); }
+    .btn-row { display: flex; justify-content: space-between; margin-top: 10px; align-items: center;}
+    .btn { background: #050506; border: 1px solid var(--line); color: var(--muted); padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 650; cursor: pointer; }
+    .btn.primary { background: var(--accent-soft); color: #eadcff; border-color: var(--line-strong); }
+    
+    .idea-list { overflow: auto; padding: 16px 12px; flex: 1; }
+    .item { padding: 14px; margin-bottom: 6px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; background: transparent; }
+    .item:hover { background: var(--surface); }
+    .item.active { background: var(--surface); border-color: var(--line-strong); position: relative; }
+    .item.active::before { content: ""; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 4px; background: var(--accent); }
+    .item h3 { margin: 0 0 6px; font-size: 14px; color: var(--text); }
+    .item p { margin: 0; font-size: 12px; color: var(--dim); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
+    .pill { font: 650 10px/1 var(--mono); text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px; color: var(--dim); }
+    .pill.ok { color: var(--green); border-color: rgba(134,239,172,.3); background: rgba(134,239,172,.06); }
+    
+    /* 右侧主干内容区：使用双轨排版 */
+    .main { overflow-y: auto; padding: 60px 40px; background: var(--bg); display: flex; justify-content: center;}
+    .doc { width: 100%; max-width: 900px; }
+    
+    h1 { font-size: 36px; margin: 0 0 16px; color: var(--text); letter-spacing: -0.04em; }
+    .lead { font-size: 16px; color: var(--body); line-height: 1.6; margin-bottom: 40px; }
+    
+    /* 核心布局创新：左右拆分内部模块 */
+    .grid-view { display: grid; grid-template-columns: 3fr 2fr; gap: 40px; }
+    
+    .section-title { font: 650 11px/1 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px;}
+    .content-box { font-size: 14px; line-height: 1.6; color: var(--muted); margin-bottom: 24px; }
+    
+    /* AI 辅助区 & 笔记区并入网格右侧 */
+    .context-panel { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+    .context-panel textarea { width: 100%; height: 100px; background: #000; border: 1px solid var(--line); color: var(--text); padding: 12px; border-radius: 8px; resize: none; margin-bottom: 16px; font-size: 13px;}
+    
+    .notice { border: 1px solid var(--line-strong); background: var(--accent-soft); border-radius: 8px; padding: 12px; color: #eadcff; font-size: 13px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="left">
+      <div class="brand">
+        <div class="brand-line"><span class="dot"></span>Idea Workbench</div>
+      </div>
+      <div class="quick-add">
+        <textarea placeholder="脑子里冒出了什么新想法？直接写下来，后续让 AI 补全边界..."></textarea>
+        <div class="btn-row">
+          <span class="pill">快捷键 Cmd+Enter</span>
+          <button class="btn primary">保存草稿</button>
+        </div>
+      </div>
+      <div class="idea-list">
+        <div class="item active">
+          <h3>个人灵感池 Agent</h3>
+          <p>把当前心情、时间和技术偏好转成项目卡片。</p>
+        </div>
+        <div class="item">
+          <h3>思路清仓工具</h3>
+          <p>把脑中杂念倾倒出来，整理成可执行事项。</p>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      <article class="doc">
+        <h1>个人灵感池 Agent</h1>
+        <p class="lead">把当前心情、时间和技术偏好转成可执行的 vibe coding 项目卡片。</p>
+        
+        <div class="grid-view">
+          <div class="core-def">
+            <div class="section-title">Why Now (为什么做)</div>
+            <div class="content-box">本地规则先给出稳定候选，LLM 只负责把已有 idea 补成更完整的说明、风险和行动步骤。既保留可控性，又能提升质量。</div>
+            
+            <div class="section-title">MVP Boundary (MVP边界)</div>
+            <div class="content-box">React 三栏工作台、SQLite 持久化、简单 token 鉴权、一个 LLM completion endpoint。</div>
+            
+            <div class="section-title">Next Action (行动指令)</div>
+            <div class="content-box" style="font-family: var(--mono); color: var(--accent);">
+              > mkdir idea-pool && cd idea-pool<br>
+              > npm create vite@latest
+            </div>
+          </div>
+          
+          <div class="context-side">
+            <div class="context-panel">
+              <div class="notice">
+                <span>✨ AI 可提供风险预估</span>
+                <button class="btn" style="background:#000;">一键补全</button>
+              </div>
+              
+              <div class="section-title">AI Diff / Risks</div>
+              <div class="content-box" style="color: #d9c7f3; font-size: 13px;">
+                - Scope creep: 容易把简单的全栈做成复杂的拖拽式面板。<br>
+                - 鉴权风险: VPS 上 API key 容易泄露，需要做层代理。
+              </div>
+
+              <div class="section-title">My Scratchpad (个人备忘)</div>
+              <textarea>保留断网可用性，必须先把 SQLite 流程跑通。</textarea>
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

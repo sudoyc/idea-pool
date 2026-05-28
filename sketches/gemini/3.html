@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium Split Pane - Vibe Coding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* 使用高级的 Zinc 深灰系，而非死黑 */
+    --bg-app: #000000;
+    --bg-sidebar: #09090b; /* Zinc 950 */
+    --bg-surface: #18181b; /* Zinc 900 */
+    --bg-surface-hover: #27272a; /* Zinc 800 */
+    
+    /* 极细微的边框，体现精致感 */
+    --border-light: rgba(255, 255, 255, 0.06);
+    --border-focus: rgba(168, 85, 247, 0.3);
+    
+    /* 文本层级 */
+    --text-h1: #ffffff;
+    --text-primary: #e4e4e7; /* Zinc 200 */
+    --text-secondary: #a1a1aa; /* Zinc 400 */
+    --text-tertiary: #71717a; /* Zinc 500 */
+    
+    /* 紫色高光系 */
+    --accent: #c084fc;
+    --accent-glow: rgba(192, 132, 252, 0.15);
+    --accent-gradient: linear-gradient(135deg, #c084fc 0%, #e879f9 100%);
+    
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  /* 自定义极简滚动条 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+  body {
+    background-color: var(--bg-app); color: var(--text-primary);
+    font-family: var(--font-sans); height: 100vh; overflow: hidden;
+    display: flex; -webkit-font-smoothing: antialiased;
+  }
+
+  /* --- Sidebar (左侧栏) --- */
+  .sidebar {
+    width: 320px; min-width: 320px; background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-light); 
+    display: flex; flex-direction: column; z-index: 10;
+  }
+
+  /* 顶部控制面板 - 带毛玻璃效果 */
+  .control-panel {
+    padding: 24px 20px 16px; position: sticky; top: 0;
+    background: rgba(9, 9, 11, 0.8); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-light); z-index: 20;
+  }
+  
+  .app-brand {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    color: var(--accent); letter-spacing: 1px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 8px; text-transform: uppercase;
+  }
+  .app-brand-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
+
+  .context-btn {
+    width: 100%; background: var(--bg-app); border: 1px solid var(--border-light); 
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; color: var(--text-secondary);
+    display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    transition: all 0.2s ease; margin-bottom: 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .context-btn:hover { background: var(--bg-surface); border-color: #3f3f46; color: var(--text-primary); }
+  .context-btn-value { color: var(--text-primary); font-weight: 500; }
+
+  /* 列表区域 */
+  .list-header {
+    padding: 24px 20px 12px; font-size: 10px; font-weight: 600;
+    color: var(--text-tertiary); letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  .idea-list { flex: 1; overflow-y: auto; padding: 0 12px 24px; }
+  
+  .list-item {
+    padding: 14px 12px; border-radius: 8px; cursor: pointer;
+    margin-bottom: 4px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent; position: relative;
+  }
+  .list-item:hover { background: var(--bg-surface); }
+  
+  /* 选中状态：带有极其细腻的发光和内阴影质感 */
+  .list-item.active { 
+    background: var(--bg-surface); border-color: var(--border-focus);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .list-item.active::before {
+    content: ''; position: absolute; left: -1px; top: 10%; bottom: 10%;
+    width: 3px; background: var(--accent); border-radius: 4px;
+    box-shadow: 0 0 12px var(--accent);
+  }
+  
+  .item-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary); transition: color 0.2s; }
+  .list-item.active .item-title { color: var(--text-h1); }
+  
+  .item-meta { 
+    font-size: 11px; color: var(--text-tertiary); display: flex; justify-content: space-between; 
+    font-family: var(--font-mono); align-items: center;
+  }
+  .item-score-pill {
+    background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;
+  }
+  .list-item.active .item-score-pill { color: var(--accent); background: var(--accent-glow); }
+
+  /* --- Main Content (右侧详情区) --- */
+  .main-content {
+    flex: 1; overflow-y: auto; display: flex; justify-content: center; position: relative;
+  }
+  /* 入场动画容器 */
+  .article-container { width: 100%; max-width: 800px; padding: 80px 48px; }
+  .fade-up { animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+  @keyframes fadeUp {
+    0% { opacity: 0; transform: translateY(12px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 顶部标签和控制 */
+  .top-actions { display: flex; justify-content: space-between; margin-bottom: 32px; }
+  .idea-category { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: 0.5px; }
+  .btn-icon { background: transparent; border: none; color: var(--text-tertiary); cursor: pointer; transition: 0.2s; }
+  .btn-icon:hover { color: var(--text-primary); }
+
+  /* 排版核心层级 */
+  h1 { 
+    font-size: 36px; font-weight: 700; letter-spacing: -0.02em; 
+    margin-bottom: 24px; color: var(--text-h1); line-height: 1.2; 
+  }
+  
+  .score-display {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 16px;
+    background: var(--accent-gradient); -webkit-background-clip: text; color: transparent; font-weight: 600;
+  }
+  
+  p { font-size: 15px; color: var(--text-secondary); line-height: 1.75; margin-bottom: 24px; }
+  
+  h2 {
+    font-size: 16px; font-weight: 600; margin: 48px 0 16px; color: var(--text-primary); 
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ''; flex: 1; height: 1px; background: var(--border-light); }
+
+  /* Section 卡片化，增加阅读层次感 */
+  .section-card {
+    background: var(--bg-surface); border: 1px solid var(--border-light);
+    border-radius: 12px; padding: 24px; margin-bottom: 24px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .section-card p:last-child { margin-bottom: 0; }
+
+  /* Terminal 风格的 First 30 Mins 区域 */
+  .terminal-block {
+    margin-top: 48px; background: #050505; border-radius: 12px;
+    border: 1px solid var(--border-focus); overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(192, 132, 252, 0.1);
+  }
+  .terminal-header {
+    background: rgba(255,255,255,0.03); padding: 12px 16px; border-bottom: 1px solid var(--border-light);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .terminal-title { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); letter-spacing: 1px; }
+  .mac-dots { display: flex; gap: 6px; }
+  .mac-dot { width: 10px; height: 10px; border-radius: 50%; background: #3f3f46; }
+  
+  .terminal-body { padding: 24px; font-family: var(--font-mono); font-size: 14px; line-height: 1.6; color: var(--text-primary); }
+  .prompt-symbol { color: var(--accent); margin-right: 12px; font-weight: bold; }
+  .terminal-cursor {
+    display: inline-block; width: 8px; height: 16px; background: var(--accent);
+    vertical-align: middle; margin-left: 4px; animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* 底部 Tags */
+  .tags-wrapper { margin-top: 48px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .premium-tag { 
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); 
+    padding: 6px 12px; border-radius: 6px; font-size: 12px; color: var(--text-secondary); 
+    font-family: var(--font-mono); transition: 0.2s; cursor: default;
+  }
+  .premium-tag:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="control-panel">
+    <div class="app-brand">
+      <div class="app-brand-dot"></div> Vibe Coding Pool
+    </div>
+    
+    <div class="context-btn">
+      <span class="context-btn-label">Current Mood</span>
+      <span class="context-btn-value">Vibe Coding ▾</span>
+    </div>
+    <div class="context-btn">
+      <span class="context-btn-label">Time Box</span>
+      <span class="context-btn-value">2 Hours ▾</span>
+    </div>
+  </div>
+  
+  <div class="list-header">Generated Ideas</div>
+  <div class="idea-list" id="idea-list">
+    </div>
+</div>
+
+<div class="main-content">
+  <div class="article-container" id="article-content">
+    </div>
+</div>
+
+<script>
+  // Mock Data
+  const ideas = [
+    {
+      title: "个人项目灵感池 Agent", category: "PRODUCTIVITY TOOLS",
+      desc: "把当前心情、时间和技术偏好转成可执行的 vibe coding 项目卡片。告别传统的列表待办，用生成式的方式降低启动项目的阻力。",
+      why: "它直接解决“想写点东西但不知道写什么”的冷启动问题。做完后能作为基础设施，反复服务于你后续的所有个人项目。",
+      mvp: "本地表单输入方向、时间、技术栈和约束，利用规则引擎生成 3-8 张结构化的项目卡，并支持一键复制或导出为 Markdown。",
+      action: "先把已有的 5 个想法固化成 seed JSON 数据，然后编写一个 deterministic 排序器组件。", 
+      stack: ["Vite", "React", "TypeScript", "localStorage"], score: 98, date: "10:24 AM"
+    },
+    {
+      title: "Agent Pack 生成器", category: "DEVELOPER TOOLS",
+      desc: "根据项目目标生成给 AI coding agent 使用的任务包、约束、检查清单和交接 prompt。",
+      why: "随着 Cursor 等工具普及，标准化任务包可以大幅减少与 AI 反复解释上下文的时间成本。",
+      mvp: "输入项目目标和技术栈，输出格式精美的 README 风格的 Agent Pack 文档。",
+      action: "定义 Agent Pack 的核心 Markdown 模板，包括：目标边界、文件树、验证命令和交付格式。", 
+      stack: ["React", "TypeScript", "Markdown"], score: 91, date: "Yesterday"
+    },
+    {
+      title: "思路清仓工具", category: "MENTAL HEALTH",
+      desc: "快速倾倒脑中杂念，再整理成可执行事项、以后再说和直接丢弃。",
+      why: "vibe coding 前经常需要先清空大脑上下文（Context switch），它能降低进入心流的摩擦力。",
+      mvp: "一个无干扰的大文本框 + 分类操作区，将整段输入拆分为单条记录，并拖拽到不同状态列。",
+      action: "搭建基础的拖拽看板 UI：[现在做]、[以后做]、[丢掉]。", 
+      stack: ["React", "TypeScript", "dnd-kit"], score: 87, date: "Yesterday"
+    }
+  ];
+
+  const listEl = document.getElementById('idea-list');
+  const articleEl = document.getElementById('article-content');
+
+  function renderArticle(index) {
+    const idea = ideas[index];
+    
+    // Update active state in list
+    document.querySelectorAll('.list-item').forEach((el, i) => {
+      el.classList.toggle('active', i === index);
+    });
+
+    // Remove animation class to re-trigger it
+    articleEl.classList.remove('fade-up');
+    
+    // Force DOM reflow
+    void articleEl.offsetWidth; 
+    
+    // Add animation class back
+    articleEl.classList.add('fade-up');
+
+    // Render right pane
+    articleEl.innerHTML = `
+      <div class="top-actions">
+        <div class="idea-category">${idea.category}</div>
+        <button class="btn-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+        </button>
+      </div>
+
+      <h1>${idea.title}</h1>
+      
+      <div style="margin-bottom: 32px;">
+        <span class="score-display">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          Match Score: ${idea.score}
+        </span>
+      </div>
+
+      <p style="font-size: 16px; color: var(--text-primary);">${idea.desc}</p>
+
+      <h2>Why Now</h2>
+      <div class="section-card">
+        <p>${idea.why}</p>
+      </div>
+
+      <h2>Minimum Viable Product</h2>
+      <div class="section-card">
+        <p>${idea.mvp}</p>
+      </div>
+
+      <div class="terminal-block">
+        <div class="terminal-header">
+          <div class="mac-dots">
+            <div class="mac-dot" style="background:#ef4444;"></div>
+            <div class="mac-dot" style="background:#eab308;"></div>
+            <div class="mac-dot" style="background:#22c55e;"></div>
+          </div>
+          <div class="terminal-title">FIRST_30_MINS.sh</div>
+          <div></div>
+        </div>
+        <div class="terminal-body">
+          <span style="color:var(--text-tertiary);"># Objective: Break the blank page syndrome</span><br><br>
+          <span class="prompt-symbol">~ $</span><span>${idea.action}</span><span class="terminal-cursor"></span>
+        </div>
+      </div>
+
+      <div class="tags-wrapper">
+        ${idea.stack.map(s => `<div class="premium-tag">${s}</div>`).join('')}
+      </div>
+    `;
+  }
+
+  // Render left list
+  ideas.forEach((idea, index) => {
+    const div = document.createElement('div');
+    div.className = `list-item ${index === 0 ? 'active' : ''}`;
+    div.onclick = () => renderArticle(index);
+    div.innerHTML = `
+      <div class="item-title">${idea.title}</div>
+      <div class="item-meta">
+        <span>${idea.stack[0]}</span>
+        <span class="item-score-pill">${idea.score}</span>
+      </div>
+    `;
+    listEl.appendChild(div);
+  });
+
+  // Init
+  renderArticle(0);
+</script>
+</body>
+</html>

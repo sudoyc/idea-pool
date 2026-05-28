@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workbench - Polished Edition</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #030305; /* 放弃纯黑，使用极深的蓝灰底色保护视力 */
+      --side: #070709; 
+      --surface: #111114; 
+      --surface-hover: #1a1a1f;
+      --line: rgba(255,255,255,0.06); 
+      --line-strong: rgba(192,132,252,0.3);
+      --text: #f4f4f5; 
+      --body: #a1a1aa; 
+      --dim: #52525b;
+      --accent: #c084fc; 
+      --accent-soft: rgba(192,132,252,0.1);
+      --green: #34d399;
+      --sans: "Inter", "Noto Sans SC", system-ui, sans-serif; 
+      --mono: "JetBrains Mono", "Fira Code", monospace;
+    }
+    
+    * { box-sizing: border-box; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    ::selection { background: rgba(192,132,252,0.3); color: #fff; }
+
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--body); font-family: var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+    button, input, textarea { font: inherit; outline: none; border: none; background: transparent; color: inherit; }
+    
+    /* 核心布局 */
+    .app { display: flex; height: 100vh; background: radial-gradient(circle at 50% 0%, rgba(20,15,30,1) 0%, var(--bg) 80%); }
+    
+    /* --- 左侧边栏 --- */
+    .sidebar { width: 250px; background: rgba(7,7,9,0.7); backdrop-filter: blur(20px); border-right: 1px solid var(--line); display: flex; flex-direction: column; z-index: 10; flex-shrink: 0; }
+    .brand { padding: 24px 20px 20px; display: flex; align-items: center; gap: 10px; color: var(--text); font: 700 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px 2px rgba(192,132,252,0.5); }
+    
+    .nav-section { padding: 12px; }
+    .nav-title { font: 600 10px/1 var(--mono); color: var(--dim); padding: 0 12px 10px; text-transform: uppercase; letter-spacing: .15em; }
+    .nav-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 8px; cursor: pointer; color: var(--body); font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
+    .nav-item:hover { background: var(--surface-hover); color: var(--text); }
+    .nav-item.active { background: rgba(255,255,255,0.06); color: var(--text); font-weight: 600; }
+    
+    .tag-list { display: flex; flex-direction: column; gap: 2px; }
+    .tag-item { font-size: 13px; color: var(--dim); cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+    .tag-item:hover { color: var(--accent); background: var(--surface); }
+    .tag-item::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 2px; border: 1.5px solid var(--dim); transition: 0.2s; }
+    .tag-item:hover::before { border-color: var(--accent); }
+
+    /* --- 右侧工作区动态容器 --- */
+    .workspace-wrapper { flex: 1; position: relative; overflow: hidden; perspective: 1000px; }
+    
+    /* 看板底层 (支持缩放动画) */
+    .workspace-inner { height: 100%; display: flex; flex-direction: column; transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease; transform-origin: top center; will-change: transform; }
+    .workspace-inner.shrink { transform: scale(0.96) translateY(10px); opacity: 0.4; pointer-events: none; }
+    
+    /* 顶部毛玻璃导航 */
+    .topbar { height: 64px; display: flex; justify-content: space-between; align-items: center; padding: 0 32px; flex-shrink: 0; background: rgba(3,3,5,0.6); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+    .view-title { font-size: 15px; font-weight: 600; color: var(--text); }
+    
+    .btn { background: var(--surface-hover); border: 1px solid var(--line); color: var(--text); padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { background: #27272a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .btn:active { transform: translateY(1px) scale(0.97); }
+    .btn.primary { background: var(--accent-soft); border-color: var(--line-strong); color: var(--accent); }
+    .btn.primary:hover { background: rgba(192,132,252,0.2); box-shadow: 0 4px 15px rgba(192,132,252,0.15); }
+
+    /* 看板流水线 */
+    .board { flex: 1; display: flex; overflow-x: auto; padding: 32px; gap: 24px; align-items: flex-start; scroll-behavior: smooth; }
+    .column { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; }
+    .col-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--line); }
+    .col-title { font: 600 12px/1 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .1em; }
+    .count { background: var(--surface); color: var(--body); font-family: var(--mono); font-size: 10px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); }
+    
+    /* 卡片微交互 */
+    .card { background: rgba(17,17,20,0.6); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 14px; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); position: relative; overflow: hidden; }
+    .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: transparent; transition: 0.3s; }
+    .card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-4px) scale(1.01); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.8); background: var(--surface); }
+    .card:hover::before { background: var(--dim); }
+    .card.ai-card:hover::before { background: var(--accent); }
+    
+    .card h3 { margin: 0 0 10px; font-size: 15px; color: var(--text); font-weight: 600; line-height: 1.4; transition: 0.2s; }
+    .card:hover h3 { color: #fff; }
+    .card p { margin: 0 0 16px; font-size: 13px; color: var(--body); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    
+    .card-meta { display: flex; justify-content: space-between; align-items: center; }
+    .pill { font: 600 10px/1 var(--mono); text-transform: uppercase; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; color: var(--dim); background: var(--surface); }
+    .pill.ai { color: var(--accent); border-color: rgba(192,132,252,0.3); background: rgba(192,132,252,0.08); }
+
+    /* --- 详情页沉浸式覆盖层 --- */
+    .detail-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
+    .detail-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 50; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 -20px 40px rgba(0,0,0,0.5); border-top-left-radius: 16px; border-top-right-radius: 16px; }
+    .detail-view.open { transform: translateY(0); pointer-events: auto; }
+    
+    .detail-topbar { height: 64px; border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 32px; gap: 16px; flex-shrink: 0; background: rgba(3,3,5,0.8); backdrop-filter: blur(16px); border-top-left-radius: 16px; border-top-right-radius: 16px; }
+    .btn-back { display: flex; align-items: center; gap: 6px; color: var(--body); font-size: 13px; font-weight: 500; cursor: pointer; padding: 8px 12px; border-radius: 8px; margin-left: -12px; transition: 0.2s; }
+    .btn-back:hover { background: var(--surface-hover); color: var(--text); }
+    
+    .detail-content { flex: 1; overflow-y: auto; padding: 60px 0 120px; scroll-behavior: smooth; }
+    .doc { max-width: 720px; margin: 0 auto; padding: 0 40px; }
+    
+    .title-input { font-size: 36px; font-weight: 700; color: var(--text); width: 100%; margin-bottom: 16px; line-height: 1.2; letter-spacing: -0.02em; transition: 0.2s; }
+    .title-input:focus { color: #fff; }
+    
+    .summary-input { font-size: 16px; color: var(--body); line-height: 1.7; width: 100%; resize: none; overflow: hidden; min-height: 56px; margin-bottom: 48px; }
+    .summary-input:focus { color: var(--text); }
+    
+    /* 核心动画：流光特效 (Shimmer) */
+    @keyframes shimmer {
+      0% { background-position: 200% center; }
+      100% { background-position: -200% center; }
+    }
+    
+    .ai-block { position: relative; border: 1px solid var(--line-strong); background: rgba(192,132,252,0.03); border-radius: 16px; padding: 24px; margin-bottom: 48px; overflow: hidden; transition: 0.3s; }
+    .ai-block:hover { border-color: rgba(192,132,252,0.6); background: rgba(192,132,252,0.06); box-shadow: 0 8px 30px rgba(192,132,252,0.1); }
+    
+    /* AI流光扫边 */
+    .ai-block::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(192,132,252,0.8), transparent);
+      background-size: 200% auto; animation: shimmer 3s infinite linear; opacity: 0.5;
+    }
+    
+    .ai-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .ai-header span { color: var(--accent); font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; display: flex; align-items: center; gap: 8px; }
+    .ai-header span::before { content: "✦"; font-size: 14px; }
+    
+    .section-title { font: 600 11px/1 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+    .editor-box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; font-size: 15px; line-height: 1.8; color: var(--body); min-height: 120px; margin-bottom: 40px; transition: all 0.2s; resize: vertical; width: 100%; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
+    .editor-box:focus { border-color: var(--dim); background: var(--surface-hover); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="dot"></span>Workbench
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-title">Views</div>
+        <div class="nav-item"><span>📥 Inbox</span><span class="count">12</span></div>
+        <div class="nav-item active"><span>🌊 Pipeline</span></div>
+        <div class="nav-item"><span>🗑️ Trash</span></div>
+      </div>
+      
+      <div class="nav-section" style="margin-top: 16px;">
+        <div class="nav-title">Tags</div>
+        <div class="tag-list">
+          <div class="tag-item">personal-os</div>
+          <div class="tag-item">tooling</div>
+          <div class="tag-item">weekend-hack</div>
+        </div>
+      </div>
+    </aside>
+    
+    <div class="workspace-wrapper">
+      <div class="workspace-inner" id="workspaceInner">
+        <div class="topbar">
+          <div class="view-title">Pipeline</div>
+          <button class="btn primary">✦ New Seed</button>
+        </div>
+        
+        <div class="board">
+          <div class="column">
+            <div class="col-header">
+              <span class="col-title">Local Seeds</span>
+              <span class="count">2</span>
+            </div>
+            
+            <div class="card" onclick="openDetail()">
+              <h3>思路清仓工具 (Mind Shredder)</h3>
+              <p>把脑中杂念倾倒出来，再整理成可执行事项。适合作为个人 OS 的入口组件。</p>
+              <div class="card-meta"><span class="pill">personal-os</span></div>
+            </div>
+            
+            <div class="card">
+              <h3>Agent Pack 构造器</h3>
+              <p>一键转成给 Cursor 使用的 markdown 任务包，包含所有上下文结构。</p>
+              <div class="card-meta"><span class="pill">tooling</span></div>
+            </div>
+          </div>
+          
+          <div class="column">
+            <div class="col-header">
+              <span class="col-title">AI Enriched</span>
+              <span class="count">1</span>
+            </div>
+            
+            <div class="card ai-card" style="border-color: rgba(192,132,252,0.2);">
+              <h3>个人灵感池中枢</h3>
+              <p>把当前心情、时间和技术偏好转成可执行的 vibe coding 项目卡片。</p>
+              <div class="card-meta">
+                <span class="pill">weekend-hack</span>
+                <span class="pill ai">✦ AI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="detail-view" id="detailView">
+        <div class="detail-topbar">
+          <button class="btn-back" onclick="closeDetail()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Back
+          </button>
+          <div style="margin-left: auto; display: flex; gap: 12px;">
+            <button class="btn">Discard</button>
+            <button class="btn primary">Save Changes</button>
+          </div>
+        </div>
+        
+        <div class="detail-content">
+          <div class="doc">
+            <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+              <span class="pill"># personal-os</span>
+            </div>
+            
+            <input type="text" class="title-input" value="思路清仓工具 (Mind Shredder)">
+            <textarea class="summary-input" oninput="this.style.height='';this.style.height=this.scrollHeight+'px'">把脑中杂念倾倒出来，再整理成可执行事项、以后再说和直接丢弃。适合作为个人 OS 的入口组件。</textarea>
+            
+            <div class="ai-block">
+              <div class="ai-header">
+                <span>AI 维度扩展</span>
+                <button class="btn primary" id="runAiBtn" onclick="simulateAI(this)">生成边界评估</button>
+              </div>
+              <div id="aiText" style="color: var(--dim); font-size: 13.5px; line-height: 1.7;">
+                当前灵感处于早期。让 AI 结合你的技术栈 (React + TS) 补全前 30 分钟的行动指南和范围蔓延风险。
+              </div>
+            </div>
+            
+            <div class="section-title">WHY NOW</div>
+            <textarea class="editor-box">因为日常脑子里突然冒出的需求太多，如果不记下来会焦虑。需要一个极简的漏斗。</textarea>
+            
+            <div class="section-title">SCRATCHPAD (草稿本)</div>
+            <textarea class="editor-box" style="font-family: var(--mono); color: var(--accent); min-height: 160px;" placeholder="// write some messy thoughts or psuedo code..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const workspaceInner = document.getElementById('workspaceInner');
+    const detailView = document.getElementById('detailView');
+    
+    // 打开详情：主看板缩小变暗，详情页弹起
+    function openDetail() {
+      workspaceInner.classList.add('shrink');
+      detailView.classList.add('open');
+      // 触发高度自适应
+      document.querySelector('.summary-input').dispatchEvent(new Event('input'));
+    }
+    
+    // 关闭详情：主看板恢复
+    function closeDetail() {
+      workspaceInner.classList.remove('shrink');
+      detailView.classList.remove('open');
+    }
+
+    // 模拟 AI 交互反馈
+    function simulateAI(btn) {
+      const textDiv = document.getElementById('aiText');
+      btn.innerText = "Processing...";
+      btn.style.opacity = "0.7";
+      textDiv.style.color = "var(--text)";
+      textDiv.innerHTML = "<span style='animation: shimmer 1s infinite alternate opacity;'>正在分析知识库与技术边界...</span>";
+      
+      setTimeout(() => {
+        btn.innerText = "Re-generate";
+        btn.style.opacity = "1";
+        textDiv.innerHTML = `
+          <ul style="margin:0; padding-left: 18px; color: var(--body);">
+            <li style="margin-bottom:6px;"><b>MVP 建议：</b>抛弃复杂的账户系统，首版仅用 localStorage 存储数组，跑通 UI 交互。</li>
+            <li style="margin-bottom:6px;"><b>风险警示：</b>容易过度设计分类标签。建议初期只保留 Inbox、Doing、Done 三个状态。</li>
+          </ul>
+        `;
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

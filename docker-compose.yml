@@ -1,0 +1,15 @@
+services:
+  idea-workbench:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      IDEA_POOL_TOKEN: ${IDEA_POOL_TOKEN:-change-me}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      DATABASE_URL: file:/data/idea-pool.db
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

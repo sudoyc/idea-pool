@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raycast Command Feed - Project Idea Pool</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09070f;
+      --panel: #11101a;
+      --panel-2: #171421;
+      --line: rgba(255,255,255,.09);
+      --text: #f2efff;
+      --muted: #a7a0b8;
+      --faint: #716b82;
+      --accent: #b983ff;
+      --accent-2: #dcc2ff;
+      --green: #8ee6b0;
+      --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+    body { overflow-x: hidden; }
+    .shell { width: min(740px, calc(100vw - 36px)); margin: 0 auto; padding: 44px 0 72px; }
+    .mast { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
+    .eyebrow { font: 650 11px/1.2 var(--mono); color: var(--accent); letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 10px 0 0; font-size: clamp(29px, 5vw, 46px); line-height: 1.04; letter-spacing: -.045em; }
+    .hint { max-width: 250px; color: var(--muted); font-size: 13px; line-height: 1.55; text-align: right; }
+    .command { position: sticky; top: 16px; z-index: 5; border: 1px solid var(--line); background: #100e18; box-shadow: 0 18px 50px rgba(0,0,0,.34); border-radius: 18px; padding: 17px 18px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; }
+    .slash { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: #201932; color: var(--accent-2); font: 700 18px/1 var(--mono); }
+    .command input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: 500 23px/1.25 var(--sans); letter-spacing: -.02em; }
+    .command input::placeholder { color: #8b849a; }
+    .run { border: 1px solid rgba(185,131,255,.45); background: #21162f; color: var(--accent-2); border-radius: 10px; padding: 8px 11px; font: 700 12px/1 var(--sans); cursor: pointer; }
+    .meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 24px; }
+    .chip { border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 6px 10px; font: 600 12px/1 var(--sans); background: rgba(255,255,255,.025); }
+    .chip.active { color: #fff; border-color: rgba(185,131,255,.45); background: rgba(185,131,255,.12); }
+    .feed { border-top: 1px solid var(--line); }
+    .row { border-bottom: 1px solid var(--line); }
+    .row button.summary { width: 100%; border: 0; background: transparent; color: inherit; padding: 18px 0; text-align: left; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; }
+    .title { font-size: 16px; line-height: 1.35; font-weight: 720; letter-spacing: -.015em; }
+    .line { margin-top: 5px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .score { font: 700 12px/1 var(--mono); color: var(--accent-2); border: 1px solid rgba(185,131,255,.32); border-radius: 999px; padding: 7px 9px; }
+    .detail { display: none; padding: 0 0 22px 26px; color: var(--muted); font-size: 14px; line-height: 1.7; border-left: 2px solid rgba(185,131,255,.45); margin-bottom: 4px; }
+    .row.open .detail { display: block; }
+    .detail h2 { color: var(--text); margin: 16px 0 7px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+    .stack { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    .tag { color: var(--green); font: 600 12px/1 var(--mono); }
+    .toast { position: fixed; right: 18px; bottom: 18px; opacity: 0; transform: translateY(10px); transition: .2s; border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; border-radius: 12px; color: var(--text); font-size: 13px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    @media (max-width: 680px) { .mast { display: block; } .hint { text-align: left; margin-top: 14px; } .command { grid-template-columns: auto 1fr; } .run { grid-column: 1 / -1; } .row button.summary { grid-template-columns: 1fr; gap: 10px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="mast">
+      <div>
+        <div class="eyebrow">Command Feed</div>
+        <h1>把今天的状态变成可执行项目。</h1>
+      </div>
+      <p class="hint">像 Raycast 一样输入一句命令，结果不是仪表盘，而是一列可展开的启动项。</p>
+    </header>
+    <section class="command" aria-label="idea command">
+      <div class="slash">/</div>
+      <input id="prompt" value="vibe coding · 2 hours · React + local first · 不要后端" aria-label="prompt">
+      <button class="run" id="run">Generate</button>
+    </section>
+    <div class="meta-row" id="filters">
+      <button class="chip active" data-filter="all">All ideas</button>
+      <button class="chip" data-filter="dev">Developer tools</button>
+      <button class="chip" data-filter="writing">Writing</button>
+      <button class="chip" data-filter="personal">Personal OS</button>
+    </div>
+    <section class="feed" id="feed"></section>
+  </main>
+  <div class="toast" id="toast">Command refreshed. Top match expanded.</div>
+  <script>
+    const ideas = [
+      { title: "个人项目灵感池 Agent", group: "personal", score: 98, line: "根据心情、时间和技术偏好推荐今天可以立刻启动的小项目。", why: "它解决的是 blank page syndrome：想写点东西，但启动成本太高。", mvp: "一个本地表单、deterministic 排序器、可复制的 Markdown 项目卡。", action: "把 21 个 seed ideas 整理成 JSON，并为每条补齐 first action。", stack: ["React", "TypeScript", "localStorage"] },
+      { title: "Agent Pack 生成器", group: "dev", score: 93, line: "把一个模糊需求转成给 coding agent 的任务包和验收清单。", why: "重复解释上下文很浪费，标准任务包能提升 AI 协作质量。", mvp: "输入目标、边界、技术栈，输出 README 风格 agent handoff。", action: "先写一份 Agent Pack Markdown 模板。", stack: ["Markdown", "Templates", "CLI"] },
+      { title: "思路清仓工具", group: "personal", score: 88, line: "把脑中杂念快速倒出来，再拆成现在做、以后做、直接丢掉。", why: "进入心流前先降低认知噪音，比做复杂待办系统更重要。", mvp: "一个大文本框和三段式整理流程，支持键盘操作。", action: "实现 paste-to-items，把多行文本拆成独立条目。", stack: ["React", "dnd-kit", "IndexedDB"] },
+      { title: "README Hero 生成器", group: "writing", score: 84, line: "为个人项目生成第一屏 README：一句话定位、截图占位、快速开始。", why: "很多项目做完后缺少展示包装，导致复用和分享成本高。", mvp: "输入项目名和功能点，生成可编辑 Markdown hero block。", action: "收集 5 个优秀 README hero 结构，抽象为模板。", stack: ["Markdown", "CSS", "Clipboard"] },
+      { title: "个人服务目录", group: "personal", score: 79, line: "把自己能提供的小服务整理成一个可分享、可维护的轻量目录。", why: "个人能力常散落在聊天记录里，需要一个稳定入口。", mvp: "本地编辑服务条目，导出静态 HTML 或 Markdown。", action: "定义服务条目字段：对象、交付物、周期、价格提示。", stack: ["Vite", "Static HTML", "JSON"] }
+    ];
+    const feed = document.getElementById('feed');
+    const toast = document.getElementById('toast');
+    let filter = 'all';
+    function render() {
+      const visible = ideas.filter(i => filter === 'all' || i.group === filter);
+      feed.innerHTML = visible.map((idea, index) => `
+        <article class="row ${index === 0 ? 'open' : ''}">
+          <button class="summary" type="button">
+            <span><span class="title">${idea.title}</span><span class="line">${idea.line}</span></span>
+            <span class="score">${idea.score}</span>
+          </button>
+          <div class="detail">
+            <h2>Why now</h2><div>${idea.why}</div>
+            <h2>MVP scope</h2><div>${idea.mvp}</div>
+            <h2>First 30 minutes</h2><div>${idea.action}</div>
+            <div class="stack">${idea.stack.map(s => `<span class="tag">#${s}</span>`).join('')}</div>
+          </div>
+        </article>`).join('');
+      feed.querySelectorAll('.summary').forEach(btn => btn.addEventListener('click', () => btn.parentElement.classList.toggle('open')));
+    }
+    document.getElementById('filters').addEventListener('click', event => {
+      if (!event.target.matches('.chip')) return;
+      filter = event.target.dataset.filter;
+      document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === event.target));
+      render();
+    });
+    document.getElementById('run').addEventListener('click', () => {
+      render(); toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1500);
+    });
+    render();
+  </script>
+</body>
+</html>

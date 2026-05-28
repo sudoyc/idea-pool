@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDE Split Pane - Project Idea Pool</title>
+  <style>
+    :root { color-scheme: dark; --bg:#050506; --side:#0b0a0f; --surface:#16131d; --surface2:#201b2c; --line:rgba(255,255,255,.08); --text:#f5f2ff; --muted:#aaa3b8; --dim:#736d80; --accent:#c084fc; --accent-soft:rgba(192,132,252,.14); --sans:Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif; --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace; }
+    *{box-sizing:border-box} html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden} button,input,select{font:inherit}
+    .app{height:100vh;display:grid;grid-template-columns:328px minmax(0,1fr)}
+    .sidebar{min-width:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}.controls{padding:22px 18px 18px;border-bottom:1px solid var(--line)}.brand{font:700 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:20px}.field{margin-top:10px}.label{display:block;color:var(--dim);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.field input,.field select{width:100%;background:#050506;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 11px;font-size:13px;outline:0}.generate{width:100%;margin-top:14px;border:1px solid rgba(192,132,252,.45);border-radius:8px;background:var(--accent-soft);color:#eadcff;padding:10px;font-size:13px;font-weight:750;cursor:pointer}.list-title{padding:18px 18px 9px;color:var(--dim);font:700 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}.idea-list{overflow:auto;padding:0 10px 18px}.item{border:1px solid transparent;border-radius:10px;padding:13px 11px;margin-bottom:5px;cursor:pointer}.item:hover{background:rgba(255,255,255,.035)}.item.active{background:var(--surface);border-color:rgba(192,132,252,.32)}.item h3{margin:0 0 6px;font-size:14px;line-height:1.35}.item p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}.item-meta{display:flex;justify-content:space-between;margin-top:9px;color:var(--dim);font:650 11px/1 var(--mono)}
+    .detail{min-width:0;overflow:auto}.doc{max-width:820px;margin:0 auto;padding:72px 56px 88px}.doc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}.crumb{font:650 12px/1 var(--mono);color:var(--accent);letter-spacing:.06em}.copy{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:8px 10px;cursor:pointer}.copy:hover{color:var(--text);background:var(--surface)}h1{margin:0 0 18px;font-size:clamp(31px,4vw,42px);line-height:1.08;letter-spacing:-.035em} .lead{font-size:16px;line-height:1.78;color:#d9d3e6;margin:0 0 42px}.doc h2{font-size:20px;margin:42px 0 14px;letter-spacing:-.015em}.doc p{color:var(--muted);font-size:15.5px;line-height:1.75;margin:0}.section{border-top:1px solid var(--line);padding-top:18px}.terminal{margin-top:42px;border:1px solid rgba(192,132,252,.28);background:#060508}.term-head{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 13px;color:var(--dim);font:650 11px/1 var(--mono)}.term-body{padding:18px 16px;font:500 14px/1.65 var(--mono);color:#e8e0f4}.prompt{color:var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}.tag{color:var(--muted);font:650 12px/1 var(--mono)}.toast{position:fixed;right:18px;bottom:18px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:11px 13px;color:var(--text);font-size:13px;opacity:0;transform:translateY(8px);transition:.18s}.toast.show{opacity:1;transform:none}
+    @media(max-width:760px){html,body{overflow:auto}.app{height:auto;min-height:100vh;grid-template-columns:1fr}.sidebar{max-height:none}.detail{overflow:visible}.doc{padding:42px 22px}.controls{position:static}.idea-list{display:flex;overflow-x:auto}.item{min-width:235px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="controls">
+        <div class="brand">Vibe Coding Pool</div>
+        <label class="field"><span class="label">Current mood</span><input id="mood" value="想做一个能马上用起来的小工具"></label>
+        <label class="field"><span class="label">Time box</span><select><option>2 hours</option><option>Tonight</option><option>Weekend</option></select></label>
+        <label class="field"><span class="label">Stack bias</span><input value="React / TypeScript / local-first"></label>
+        <button class="generate" id="generate">Generate workspace list</button>
+      </div>
+      <div class="list-title">Generated Ideas</div>
+      <div class="idea-list" id="ideaList"></div>
+    </aside>
+    <main class="detail"><article class="doc" id="doc"></article></main>
+  </div>
+  <div class="toast" id="toast">Copied as Markdown-ish outline</div>
+  <script>
+    const ideas=[
+      {title:'个人项目灵感池 Agent',cat:'PRODUCTIVITY TOOL',score:98,summary:'把当前心情、时间和技术偏好转成可执行的 vibe coding 项目卡片。',why:'核心价值不是推荐“最佳创业点子”，而是把“想写点东西但不知道写什么”的冲动转成一个可以立刻开始的项目。',mvp:'本地输入方向、时间、技术栈和约束，利用 deterministic 规则生成结构化项目卡，并支持复制或导出 Markdown。',action:'先把已有的 21 个 seed ideas 固化成 JSON，并为每条补全 summary / why / MVP / first action。',stack:['Vite','React','TypeScript','localStorage']},
+      {title:'Agent Pack 生成器',cat:'DEVELOPER WORKFLOW',score:93,summary:'根据项目目标生成给 AI coding agent 使用的任务包、约束和检查清单。',why:'AI 编程工具越来越像协作者，好的任务包能减少来回解释上下文。',mvp:'输入目标、边界、技术栈，输出 README 风格 Agent Pack 文档。',action:'定义核心 Markdown 模板：目标、禁止事项、文件树、验证命令、交付格式。',stack:['Markdown','Prompt design','Templates']},
+      {title:'思路清仓工具',cat:'PERSONAL OS',score:88,summary:'快速倾倒脑中杂念，再整理成可执行事项、以后再说和直接丢弃。',why:'很多项目启动失败不是因为 idea 不够，而是脑内上下文太吵。',mvp:'无干扰大文本框，提交后拆分为条目，拖到 Now / Later / Trash 三列。',action:'先完成纯键盘版文本拆分和三段状态切换。',stack:['React','dnd-kit','IndexedDB']},
+      {title:'README Hero 生成器',cat:'WRITING TOOL',score:84,summary:'为个人项目生成第一屏 README：一句话定位、使用截图占位和快速开始。',why:'小项目做完之后常缺少包装，导致很难再次理解或分享。',mvp:'输入项目名、对象、三条功能点，生成可编辑 Markdown hero block。',action:'整理 5 个你喜欢的 README 首屏，抽象标题、subtitle、CTA、screenshot 四段。',stack:['Markdown','Clipboard','CSS']},
+      {title:'个人服务目录',cat:'PERSONAL SITE',score:79,summary:'把自己能提供的小服务整理成可分享、可维护的轻量目录。',why:'个人能力常散落在聊天记录和项目里，需要一个稳定入口。',mvp:'本地维护服务条目，按受众筛选，导出静态 HTML。',action:'列出 6 个真实可交付服务，并为每个写清楚对象、产出、周期。',stack:['Static HTML','JSON','Vite']}
+    ];
+    const list=document.getElementById('ideaList'),doc=document.getElementById('doc'),toast=document.getElementById('toast');let selected=0;
+    function renderList(){list.innerHTML=ideas.map((i,idx)=>`<section class="item ${idx===selected?'active':''}" data-i="${idx}"><h3>${i.title}</h3><p>${i.summary}</p><div class="item-meta"><span>${i.cat}</span><span>${i.score}</span></div></section>`).join('')}
+    function renderDoc(){const i=ideas[selected];doc.innerHTML=`<div class="doc-top"><div class="crumb">${i.cat} / SCORE ${i.score}</div><button class="copy" id="copy">Copy</button></div><h1>${i.title}</h1><p class="lead">${i.summary}</p><section class="section"><h2>Why now</h2><p>${i.why}</p></section><section class="section"><h2>Minimum viable product</h2><p>${i.mvp}</p></section><section class="terminal"><div class="term-head"><span>FIRST_30_MINUTES.md</span><span>ready</span></div><div class="term-body"><span class="prompt">$</span> ${i.action}</div></section><div class="tags">${i.stack.map(s=>`<span class="tag">#${s}</span>`).join('')}</div>`;document.getElementById('copy').onclick=()=>{toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1300)}}
+    list.onclick=e=>{const item=e.target.closest('.item');if(!item)return;selected=Number(item.dataset.i);renderList();renderDoc()};
+    document.getElementById('generate').onclick=()=>{selected=0;renderList();renderDoc();toast.textContent='Workspace list regenerated from current controls';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1300)};
+    renderList();renderDoc();
+  </script>
+</body>
+</html>
