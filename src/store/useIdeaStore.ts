@@ -1,7 +1,7 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import { create } from 'zustand'
 import { initialWorkbenchIdeas } from '../data/workbenchIdeas'
-import type { AiAnalysis, IdeaPatch, IdeaStatus, WorkbenchIdea } from '../workbenchTypes'
+import type { AiAnalysis, IdeaPatch, IdeaStatus, WorkbenchIdea, WorkspaceScreen } from '../workbenchTypes'
 
 const storageKey = 'personal-idea-workbench:v1'
 
@@ -9,14 +9,16 @@ type IdeaState = {
   ideas: WorkbenchIdea[]
   selectedIdeaId: string | null
   detailOpen: boolean
-  activeView: IdeaStatus | 'ALL'
+  activeFilter: IdeaStatus
+  screen: WorkspaceScreen
   statusMessage: string
   openDetail: (id: string) => void
   closeDetail: () => void
   createIdea: () => void
   updateIdea: (id: string, patch: IdeaPatch) => void
   moveIdea: (id: string, status: IdeaStatus, overId?: string) => void
-  setActiveView: (view: IdeaStatus | 'ALL') => void
+  setActiveFilter: (view: IdeaStatus) => void
+  setScreen: (screen: WorkspaceScreen) => void
   enrichIdea: (id: string, analysis?: AiAnalysis) => void
   discardSelected: () => void
   setStatusMessage: (message: string) => void
@@ -55,7 +57,8 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
   ideas: loadIdeas(),
   selectedIdeaId: null,
   detailOpen: false,
-  activeView: 'PIPELINE',
+  activeFilter: 'PIPELINE',
+  screen: 'WORKBENCH',
   statusMessage: '',
   openDetail: (id) => set({ selectedIdeaId: id, detailOpen: true }),
   closeDetail: () => set({ detailOpen: false }),
@@ -66,10 +69,14 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
       title: 'Untitled Seed',
       summary: '写下一条还没有被 AI 补全的本地灵感。',
       status: 'INBOX',
+      source: 'local',
       tags: ['seed'],
       whyNow: '为什么现在值得做？',
+      mvpScope: '',
+      firstAction: '',
       scratchpad: '',
       aiEnriched: false,
+      sortOrder: 0,
       createdAt: now,
       updatedAt: now,
     }
@@ -103,7 +110,8 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
     persistIdeas(next)
     set({ ideas: next, statusMessage: `Moved to ${status}` })
   },
-  setActiveView: (view) => set({ activeView: view }),
+  setActiveFilter: (activeFilter) => set({ activeFilter, screen: 'WORKBENCH' }),
+  setScreen: (screen) => set({ screen }),
   enrichIdea: (id, analysis = defaultAnalysis) => {
     const ideas = get().ideas.map((idea) =>
       idea.id === id

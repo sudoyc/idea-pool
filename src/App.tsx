@@ -3,8 +3,10 @@ import {
   ChevronLeft,
   Inbox,
   KanbanSquare,
+  Lock,
   Plus,
   Save,
+  Settings,
   Sparkles,
   Tag,
   Trash2,
@@ -41,11 +43,14 @@ const columnDescriptions: Record<IdeaStatus, string> = {
 
 function App() {
   const ideas = useIdeaStore((state) => state.ideas)
-  const activeView = useIdeaStore((state) => state.activeView)
+  const activeFilter = useIdeaStore((state) => state.activeFilter)
+  const screen = useIdeaStore((state) => state.screen)
   const detailOpen = useIdeaStore((state) => state.detailOpen)
   const selectedIdeaId = useIdeaStore((state) => state.selectedIdeaId)
   const statusMessage = useIdeaStore((state) => state.statusMessage)
-  const setActiveView = useIdeaStore((state) => state.setActiveView)
+  const setActiveFilter = useIdeaStore((state) => state.setActiveFilter)
+  const setScreen = useIdeaStore((state) => state.setScreen)
+  const closeDetail = useIdeaStore((state) => state.closeDetail)
   const createIdea = useIdeaStore((state) => state.createIdea)
   const moveIdea = useIdeaStore((state) => state.moveIdea)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
@@ -53,7 +58,6 @@ function App() {
 
   const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0]
   const activeDragIdea = ideas.find((idea) => idea.id === activeDragId)
-  const visibleStatuses = activeView === 'ALL' ? statusOrder : statusOrder.filter((status) => status === activeView)
   const tags = Array.from(new Set(ideas.flatMap((idea) => idea.tags))).slice(0, 8)
 
   const counts = useMemo(
@@ -81,6 +85,47 @@ function App() {
     moveIdea(activeId, overStatus, overIdea?.id)
   }
 
+  useEffect(() => {
+    if (!detailOpen || !selectedIdeaId) return
+    if (window.history.state?.ideaDetailId === selectedIdeaId) return
+    window.history.pushState({ ideaDetailId: selectedIdeaId }, '')
+  }, [detailOpen, selectedIdeaId])
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (detailOpen) {
+        closeDetail()
+      }
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && detailOpen) {
+        event.preventDefault()
+        if (window.history.state?.ideaDetailId) {
+          window.history.back()
+        } else {
+          closeDetail()
+        }
+      }
+    }
+
+    window.addEventListener('popstate', onPopState)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [closeDetail, detailOpen])
+
+  const handleCloseDetail = () => {
+    if (window.history.state?.ideaDetailId) {
+      window.history.back()
+      return
+    }
+
+    closeDetail()
+  }
+
   return (
     <main className="app">
       <aside className="sidebar">
@@ -95,10 +140,10 @@ function App() {
             const Icon = item.icon
             return (
               <button
-                className={`nav-item ${activeView === item.status ? 'active' : ''}`}
+                className={`nav-item ${screen === 'WORKBENCH' && activeFilter === item.status ? 'active' : ''}`}
                 key={item.status}
                 type="button"
-                onClick={() => setActiveView(item.status)}
+                onClick={() => setActiveFilter(item.status)}
               >
                 <span className="nav-item-left">
                   <Icon className="icon" />
@@ -121,55 +166,87 @@ function App() {
             ))}
           </div>
         </nav>
+
+        <nav className="nav-section nav-section--system" aria-label="System">
+          <div className="nav-title">System</div>
+            <button
+              className={`nav-item ${screen === 'SETTINGS' ? 'active' : ''}`}
+              type="button"
+              onClick={() => {
+                closeDetail()
+                setScreen('SETTINGS')
+              }}
+            >
+            <span className="nav-item-left">
+              <Settings className="icon" />
+              <span>Settings</span>
+            </span>
+          </button>
+        </nav>
       </aside>
 
       <section className="workspace-wrapper">
         <div className={`workspace-inner ${detailOpen ? 'shrink' : ''}`} id="workspaceInner">
           <div className="topbar">
             <div className="view-title">
-              <KanbanSquare className="icon" />
-              {activeView === 'ALL' ? 'Pipeline' : navItems.find((item) => item.status === activeView)?.label}
+              {screen === 'SETTINGS' ? <Settings className="icon" /> : <KanbanSquare className="icon" />}
+              {screen === 'SETTINGS' ? 'Settings' : navItems.find((item) => item.status === activeFilter)?.label}
             </div>
             <div className="topbar-actions">
               {statusMessage && <span className="status-message">{statusMessage}</span>}
-              <button className="btn primary" type="button" onClick={createIdea}>
-                <Plus className="icon" />
-                New Seed
-              </button>
+              {screen === 'WORKBENCH' ? (
+                <button className="btn primary" type="button" onClick={createIdea}>
+                  <Plus className="icon" />
+                  New Seed
+                </button>
+              ) : (
+                <button className="btn" type="button" onClick={() => setScreen('WORKBENCH')}>
+                  <KanbanSquare className="icon" />
+                  Return to Board
+                </button>
+              )}
             </div>
           </div>
 
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            onDragStart={handleDragStart}
-            sensors={sensors}
-          >
-            <div className="board">
-              {visibleStatuses.map((status) => (
-                <BoardColumn
-                  description={columnDescriptions[status]}
-                  ideas={ideas.filter((idea) => idea.status === status)}
-                  key={status}
-                  status={status}
-                />
-              ))}
-            </div>
-            <DragOverlay>{activeDragIdea ? <IdeaCard idea={activeDragIdea} overlay /> : null}</DragOverlay>
-          </DndContext>
+          {screen === 'WORKBENCH' ? (
+            <DndContext
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              onDragStart={handleDragStart}
+              sensors={sensors}
+            >
+              <div className="workspace-layout">
+                <div className="board">
+                  {statusOrder.map((status) => (
+                    <BoardColumn
+                      description={columnDescriptions[status]}
+                      focus={activeFilter === status}
+                      ideas={ideas.filter((idea) => idea.status === status)}
+                      key={status}
+                      status={status}
+                    />
+                  ))}
+                </div>
+                <InspectorRail activeFilter={activeFilter} idea={selectedIdea} />
+              </div>
+              <DragOverlay>{activeDragIdea ? <IdeaCard idea={activeDragIdea} overlay /> : null}</DragOverlay>
+            </DndContext>
+          ) : (
+            <SettingsView />
+          )}
         </div>
 
-        {selectedIdea && <DetailView idea={selectedIdea} />}
+        {selectedIdea && <DetailView idea={selectedIdea} onClose={handleCloseDetail} />}
       </section>
     </main>
   )
 }
 
-function BoardColumn({ description, ideas, status }: { description: string; ideas: WorkbenchIdea[]; status: IdeaStatus }) {
+function BoardColumn({ description, focus, ideas, status }: { description: string; focus: boolean; ideas: WorkbenchIdea[]; status: IdeaStatus }) {
   const { setNodeRef } = useDroppable({ id: status })
 
   return (
-    <section className="column" ref={setNodeRef}>
+    <section className={`column ${focus ? 'column--focus' : 'column--muted'}`} ref={setNodeRef}>
       <div className="col-header">
         <div>
           <span className="col-title">{statusLabels[status]}</span>
@@ -210,6 +287,10 @@ function IdeaCard({ dragging = false, idea, onOpen, overlay = false }: { draggin
       <p>{idea.summary}</p>
       <div className="card-meta">
         <span className="pill">{idea.tags[0] ?? 'seed'}</span>
+        <span className="card-source">{idea.source}</span>
+      </div>
+      <div className="card-submeta">
+        <span>{idea.firstAction ?? idea.whyNow}</span>
         {idea.aiEnriched && (
           <span className="pill ai">
             <Sparkles className="icon icon-sm" />
@@ -221,8 +302,7 @@ function IdeaCard({ dragging = false, idea, onOpen, overlay = false }: { draggin
   )
 }
 
-function DetailView({ idea }: { idea: WorkbenchIdea }) {
-  const closeDetail = useIdeaStore((state) => state.closeDetail)
+function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => void }) {
   const detailOpen = useIdeaStore((state) => state.detailOpen)
   const updateIdea = useIdeaStore((state) => state.updateIdea)
   const enrichIdea = useIdeaStore((state) => state.enrichIdea)
@@ -272,7 +352,7 @@ function DetailView({ idea }: { idea: WorkbenchIdea }) {
   return (
     <section className={`detail-view ${detailOpen ? 'open' : ''}`} id="detailView">
       <div className="detail-topbar">
-        <button className="btn-back" type="button" onClick={closeDetail}>
+        <button className="btn-back" type="button" onClick={onClose}>
           <ChevronLeft className="icon" />
           Back
         </button>
@@ -281,7 +361,7 @@ function DetailView({ idea }: { idea: WorkbenchIdea }) {
             <Archive className="icon" />
             Discard
           </button>
-          <button className="btn primary" type="button" onClick={closeDetail}>
+          <button className="btn primary" type="button" onClick={() => updateIdea(idea.id, {})}>
             <Save className="icon" />
             Save Changes
           </button>
@@ -289,56 +369,156 @@ function DetailView({ idea }: { idea: WorkbenchIdea }) {
       </div>
 
       <div className="detail-content">
-        <div className="doc">
-          <div className="detail-tags">
-            {idea.tags.map((tag) => (
-              <span className="pill" key={tag}>
-                # {tag}
-              </span>
-            ))}
-          </div>
-
-          <input
-            className="title-input"
-            onChange={(event) => updateIdea(idea.id, { title: event.target.value })}
-            type="text"
-            value={idea.title}
-          />
-          <textarea
-            className="summary-input"
-            onChange={(event) => updateIdea(idea.id, { summary: event.target.value })}
-            ref={summaryRef}
-            value={idea.summary}
-          />
-
-          <div className="ai-block">
-            <div className="ai-header">
-              <span>
-                <Sparkles className="icon" />
-                AI 维度扩展
-              </span>
-              <button className="btn primary" disabled={aiBusy} type="button" onClick={runAi}>
-                {aiBusy ? 'Processing...' : idea.aiEnriched ? 'Re-generate' : '生成边界评估'}
-              </button>
+        <div className="detail-grid">
+          <div className="doc doc-main">
+            <div className="detail-tags">
+              {idea.tags.map((tag) => (
+                <span className="pill" key={tag}>
+                  # {tag}
+                </span>
+              ))}
             </div>
-            <AiAnalysisText busy={aiBusy} idea={idea} />
+
+            <input
+              className="title-input"
+              onChange={(event) => updateIdea(idea.id, { title: event.target.value })}
+              type="text"
+              value={idea.title}
+            />
+            <textarea
+              className="summary-input"
+              onChange={(event) => updateIdea(idea.id, { summary: event.target.value })}
+              ref={summaryRef}
+              value={idea.summary}
+            />
+
+            <div className="section-title">WHY NOW</div>
+            <textarea
+              className="editor-box"
+              onChange={(event) => updateIdea(idea.id, { whyNow: event.target.value })}
+              value={idea.whyNow}
+            />
+
+            <div className="section-title">MVP SCOPE</div>
+            <textarea
+              className="editor-box"
+              onChange={(event) => updateIdea(idea.id, { mvpScope: event.target.value })}
+              value={idea.mvpScope ?? ''}
+            />
+
+            <div className="section-title">FIRST ACTION</div>
+            <textarea
+              className="editor-box"
+              onChange={(event) => updateIdea(idea.id, { firstAction: event.target.value })}
+              value={idea.firstAction ?? ''}
+            />
+
+            <div className="section-title">SCRATCHPAD (草稿本)</div>
+            <textarea
+              className="editor-box editor-box--mono"
+              onChange={(event) => updateIdea(idea.id, { scratchpad: event.target.value })}
+              placeholder="// write some messy thoughts or pseudo code..."
+              value={idea.scratchpad}
+            />
           </div>
 
-          <div className="section-title">WHY NOW</div>
-          <textarea
-            className="editor-box"
-            onChange={(event) => updateIdea(idea.id, { whyNow: event.target.value })}
-            value={idea.whyNow}
-          />
+          <aside className="detail-rail">
+            <div className="rail-section rail-section--ai">
+              <div className="ai-block">
+                <div className="ai-header">
+                  <span>
+                    <Sparkles className="icon" />
+                    AI 维度扩展
+                  </span>
+                  <button className="btn primary" disabled={aiBusy} type="button" onClick={runAi}>
+                    {aiBusy ? 'Processing...' : idea.aiEnriched ? 'Re-generate' : '生成边界评估'}
+                  </button>
+                </div>
+                <AiAnalysisText busy={aiBusy} idea={idea} />
+              </div>
+            </div>
 
-          <div className="section-title">SCRATCHPAD (草稿本)</div>
-          <textarea
-            className="editor-box editor-box--mono"
-            onChange={(event) => updateIdea(idea.id, { scratchpad: event.target.value })}
-            placeholder="// write some messy thoughts or pseudo code..."
-            value={idea.scratchpad}
-          />
+            <div className="rail-section">
+              <div className="section-title">NOTES / CHECKLIST</div>
+              <div className="rail-note">当前 detail 已与 filter 解耦。切换左侧栏位不会主动关闭这张卡片。</div>
+              <ul className="rail-list">
+                <li>先确认 MVP 是否足够小</li>
+                <li>再决定是否需要 LLM 补全</li>
+                <li>最后再生成 Agent Pack</li>
+              </ul>
+            </div>
+
+            <div className="rail-section">
+              <div className="section-title">METADATA</div>
+              <dl className="meta-list">
+                <div><dt>Status</dt><dd>{idea.status}</dd></div>
+                <div><dt>Source</dt><dd>{idea.source}</dd></div>
+                <div><dt>Updated</dt><dd>{new Date(idea.updatedAt).toLocaleString('zh-CN')}</dd></div>
+              </dl>
+            </div>
+          </aside>
         </div>
+      </div>
+    </section>
+  )
+}
+
+function InspectorRail({ activeFilter, idea }: { activeFilter: IdeaStatus; idea?: WorkbenchIdea }) {
+  return (
+    <aside className="inspector-rail">
+      <section className="inspector-card">
+        <div className="section-title">FOCUS FILTER</div>
+        <h3>{statusLabels[activeFilter]}</h3>
+        <p>左侧栏位现在作为过滤器工作，其它列会保留在背景中，避免右侧空间空置。</p>
+      </section>
+
+      <section className="inspector-card">
+        <div className="section-title">CURRENT SELECTION</div>
+        <h3>{idea?.title ?? 'No idea selected'}</h3>
+        <p>{idea?.summary ?? '打开一张卡片后，这里可以提供 quick notes、history 和 agent actions。'}</p>
+      </section>
+
+      <section className="inspector-card">
+        <div className="section-title">NEXT STEPS</div>
+        <ul className="inspector-list">
+          <li>增加 Notes / Checklist 持久化</li>
+          <li>把 inspector 接入真实 idea events</li>
+          <li>接入登录态与 remote sync</li>
+        </ul>
+      </section>
+    </aside>
+  )
+}
+
+function SettingsView() {
+  return (
+    <section className="settings-view">
+      <div className="settings-grid">
+        <section className="settings-card settings-card--hero">
+          <div className="section-title">GENERAL</div>
+          <h2>Personal Idea Workbench</h2>
+          <p>这是一个保留概念的 Settings 页面骨架，后续用于承载 AI、Agent API、存储与安全相关配置。</p>
+        </section>
+
+        <section className="settings-card">
+          <div className="section-title">AI</div>
+          <p>当前模式：LLM 只补全选中的 idea，不自动选题、不自动移动卡片。</p>
+        </section>
+
+        <section className="settings-card">
+          <div className="section-title">AGENT API</div>
+          <p>预留 `/api/agent/v1` 的上下文、idea CRUD、completion 和 agent pack 接口。</p>
+        </section>
+
+        <section className="settings-card">
+          <div className="section-title">STORAGE</div>
+          <p>SQLite 保存结构化数据；文件导出与附件保存到 `/data/files`。</p>
+        </section>
+
+        <section className="settings-card">
+          <div className="section-title">SECURITY</div>
+          <p><Lock className="icon settings-inline-icon" /> 计划使用全屏登录页 + session cookie，agent 继续使用 Bearer token。</p>
+        </section>
       </div>
     </section>
   )
