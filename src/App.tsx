@@ -4,6 +4,7 @@ import {
   Inbox,
   KanbanSquare,
   Lock,
+  LogOut,
   Plus,
   Save,
   Settings,
@@ -11,7 +12,7 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -28,6 +29,9 @@ import { CSS } from '@dnd-kit/utilities'
 import './App.css'
 import { useIdeaStore } from './store/useIdeaStore'
 import { statusLabels, statusOrder, type IdeaStatus, type WorkbenchIdea } from './workbenchTypes'
+
+type AuthState = 'checking' | 'authenticated' | 'anonymous'
+type AuthMode = 'disabled' | 'password' | 'token'
 
 const navItems: Array<{ label: string; status: IdeaStatus; icon: typeof Inbox }> = [
   { label: 'Inbox', status: 'INBOX', icon: Inbox },
@@ -53,12 +57,56 @@ function App() {
   const closeDetail = useIdeaStore((state) => state.closeDetail)
   const createIdea = useIdeaStore((state) => state.createIdea)
   const moveIdea = useIdeaStore((state) => state.moveIdea)
+  const replaceIdeas = useIdeaStore((state) => state.replaceIdeas)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [authState, setAuthState] = useState<AuthState>('checking')
+  const [authMode, setAuthMode] = useState<AuthMode>('password')
+  const [authEnabled, setAuthEnabled] = useState(true)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0]
   const activeDragIdea = ideas.find((idea) => idea.id === activeDragId)
   const tags = Array.from(new Set(ideas.flatMap((idea) => idea.tags))).slice(0, 8)
+
+  const loadRemoteIdeas = useCallback(async () => {
+    try {
+      const response = await fetch('/api/ideas')
+      if (!response.ok) return
+      const payload = (await response.json()) as { ideas?: WorkbenchIdea[] }
+      if (Array.isArray(payload.ideas)) {
+        replaceIdeas(payload.ideas)
+      }
+    } catch {
+      // Keep local data if the remote endpoint is unavailable.
+    }
+  }, [replaceIdeas])
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      try {
+        const response = await fetch('/api/auth/session')
+        const payload = (await response.json()) as {
+          authEnabled: boolean
+          authMode: AuthMode
+          authenticated: boolean
+        }
+        setAuthEnabled(payload.authEnabled)
+        setAuthMode(payload.authMode)
+        if (payload.authenticated) {
+          setAuthState('authenticated')
+          await loadRemoteIdeas()
+          return
+        }
+        setAuthState('anonymous')
+      } catch {
+        setAuthEnabled(false)
+        setAuthMode('disabled')
+        setAuthState('authenticated')
+      }
+    }
+
+    void bootstrap()
+  }, [loadRemoteIdeas])
 
   const counts = useMemo(
     () =>
@@ -124,6 +172,37 @@ function App() {
     }
 
     closeDetail()
+  }
+
+  const handleLogin = async (input: { password?: string; token?: string }) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+
+    if (!response.ok) {
+      throw new Error('登录失败，请检查密码或 token。')
+    }
+
+    const payload = (await response.json()) as { authEnabled: boolean; authMode: AuthMode; authenticated: boolean }
+    setAuthEnabled(payload.authEnabled)
+    setAuthMode(payload.authMode)
+    setAuthState(payload.authenticated ? 'authenticated' : 'anonymous')
+    await loadRemoteIdeas()
+  }
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    setAuthState(authEnabled ? 'anonymous' : 'authenticated')
+  }
+
+  if (authState === 'checking') {
+    return <LoadingScreen />
+  }
+
+  if (authState === 'anonymous') {
+    return <LoginScreen authMode={authMode} onLogin={handleLogin} />
   }
 
   return (
@@ -232,7 +311,7 @@ function App() {
               <DragOverlay>{activeDragIdea ? <IdeaCard idea={activeDragIdea} overlay /> : null}</DragOverlay>
             </DndContext>
           ) : (
-            <SettingsView />
+            <SettingsView authEnabled={authEnabled} authMode={authMode} onLogout={handleLogout} />
           )}
         </div>
 
@@ -490,7 +569,7 @@ function InspectorRail({ activeFilter, idea }: { activeFilter: IdeaStatus; idea?
   )
 }
 
-function SettingsView() {
+function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolean; authMode: AuthMode; onLogout: () => void }) {
   return (
     <section className="settings-view">
       <div className="settings-grid">
@@ -517,10 +596,79 @@ function SettingsView() {
 
         <section className="settings-card">
           <div className="section-title">SECURITY</div>
-          <p><Lock className="icon settings-inline-icon" /> 计划使用全屏登录页 + session cookie，agent 继续使用 Bearer token。</p>
+          <p><Lock className="icon settings-inline-icon" /> 当前模式：{authEnabled ? authMode : 'disabled'}。Web 使用 session cookie，agent 使用 Bearer token。</p>
+          {authEnabled && (
+            <button className="btn settings-action" type="button" onClick={onLogout}>
+              <LogOut className="icon" />
+              Sign out
+            </button>
+          )}
         </section>
       </div>
     </section>
+  )
+}
+
+function LoadingScreen() {
+  return (
+    <main className="auth-screen">
+      <div className="auth-panel auth-panel--loading">
+        <div className="brand auth-brand">
+          <span className="dot" />
+          Workbench
+        </div>
+        <h1>Checking session</h1>
+        <p>正在确认当前工作台的访问权限与本地状态。</p>
+      </div>
+    </main>
+  )
+}
+
+function LoginScreen({ authMode, onLogin }: { authMode: AuthMode; onLogin: (input: { password?: string; token?: string }) => Promise<void> }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSubmitting(true)
+    setError('')
+    try {
+      await onLogin(authMode === 'token' ? { token: value } : { password: value })
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : '登录失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="auth-screen">
+      <form className="auth-panel" onSubmit={submit}>
+        <div className="brand auth-brand">
+          <span className="dot" />
+          Workbench
+        </div>
+        <div className="auth-eyebrow">Private Access</div>
+        <h1>Personal Idea Workbench</h1>
+        <p>输入{authMode === 'token' ? '访问 token' : '登录密码'}，进入你的个人灵感工作台。</p>
+        <label className="auth-label">
+          {authMode === 'token' ? 'Access token' : 'Password'}
+          <input
+            autoFocus
+            className="auth-input"
+            onChange={(event) => setValue(event.target.value)}
+            type={authMode === 'token' ? 'text' : 'password'}
+            value={value}
+          />
+        </label>
+        {error && <div className="auth-error">{error}</div>}
+        <button className="btn primary auth-submit" disabled={submitting || value.trim().length === 0} type="submit">
+          <Lock className="icon" />
+          {submitting ? 'Signing in...' : 'Sign in'}
+        </button>
+      </form>
+    </main>
   )
 }
 

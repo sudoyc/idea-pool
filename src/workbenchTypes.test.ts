@@ -48,4 +48,13 @@ describe('workbench model', () => {
     expect(useIdeaStore.getState().screen).toBe('SETTINGS')
     expect(useIdeaStore.getState().selectedIdeaId).toBe(firstIdea.id)
   })
+
+  it('can replace local ideas with remote state', () => {
+    const remoteIdea = { ...initialWorkbenchIdeas[0], id: 'remote-idea', title: 'Remote Idea' }
+
+    useIdeaStore.getState().replaceIdeas([remoteIdea])
+
+    expect(useIdeaStore.getState().ideas).toHaveLength(1)
+    expect(useIdeaStore.getState().ideas[0]?.id).toBe('remote-idea')
+  })
 })

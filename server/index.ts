@@ -2,10 +2,12 @@ import 'dotenv/config'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { requireToken } from './auth.js'
+import { assertAuthConfiguration, login, logout, requireSessionOrToken, session } from './auth.js'
 import { deleteIdea, getIdea, listIdeas, patchIdea, upsertIdea } from './db.js'
 import { completeIdea } from './llm.js'
 import type { IdeaRecord } from './types.js'
+
+assertAuthConfiguration()
 
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
@@ -17,7 +19,11 @@ app.get('/api/health', (_request, response) => {
   response.json({ ok: true })
 })
 
-app.use('/api', requireToken)
+app.get('/api/auth/session', session)
+app.post('/api/auth/login', login)
+app.post('/api/auth/logout', logout)
+
+app.use('/api', requireSessionOrToken)
 
 app.get('/api/ideas', (_request, response) => {
   response.json({ ideas: listIdeas() })
@@ -31,13 +37,18 @@ app.post('/api/ideas', (request, response) => {
     title: body.title ?? 'Untitled Seed',
     summary: body.summary ?? '',
     status: body.status ?? 'INBOX',
+    source: body.source ?? 'local',
     tags: body.tags ?? ['seed'],
     whyNow: body.whyNow ?? '',
+    mvpScope: body.mvpScope,
+    firstAction: body.firstAction,
     scratchpad: body.scratchpad ?? '',
     aiEnriched: body.aiEnriched ?? false,
     aiAnalysis: body.aiAnalysis,
+    sortOrder: body.sortOrder ?? 0,
     createdAt: body.createdAt ?? now,
     updatedAt: now,
+    archivedAt: body.archivedAt ?? null,
   }
   response.status(201).json({ idea: upsertIdea(idea) })
 })

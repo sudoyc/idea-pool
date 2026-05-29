@@ -14,6 +14,7 @@ type IdeaState = {
   statusMessage: string
   openDetail: (id: string) => void
   closeDetail: () => void
+  replaceIdeas: (ideas: WorkbenchIdea[]) => void
   createIdea: () => void
   updateIdea: (id: string, patch: IdeaPatch) => void
   moveIdea: (id: string, status: IdeaStatus, overId?: string) => void
@@ -53,6 +54,30 @@ const defaultAnalysis: AiAnalysis = {
   boundaryNotes: '建议把 LLM 输出作为 draft，用户通过 notes/checklist 做最终判断。',
 }
 
+const syncCreate = async (idea: WorkbenchIdea) => {
+  try {
+    await fetch('/api/ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(idea),
+    })
+  } catch {
+    // Keep local-first fallback when the API is unavailable.
+  }
+}
+
+const syncPatch = async (id: string, patch: IdeaPatch) => {
+  try {
+    await fetch(`/api/ideas/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  } catch {
+    // Keep local-first fallback when the API is unavailable.
+  }
+}
+
 export const useIdeaStore = create<IdeaState>((set, get) => ({
   ideas: loadIdeas(),
   selectedIdeaId: null,
@@ -62,6 +87,10 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
   statusMessage: '',
   openDetail: (id) => set({ selectedIdeaId: id, detailOpen: true }),
   closeDetail: () => set({ detailOpen: false }),
+  replaceIdeas: (ideas) => {
+    persistIdeas(ideas)
+    set({ ideas })
+  },
   createIdea: () => {
     const now = timestamp()
     const idea: WorkbenchIdea = {
@@ -82,11 +111,13 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
     }
     const ideas = [idea, ...get().ideas]
     persistIdeas(ideas)
+    void syncCreate(idea)
     set({ ideas, selectedIdeaId: idea.id, detailOpen: true, statusMessage: 'New seed created' })
   },
   updateIdea: (id, patch) => {
     const ideas = get().ideas.map((idea) => (idea.id === id ? { ...idea, ...patch, updatedAt: timestamp() } : idea))
     persistIdeas(ideas)
+    void syncPatch(id, patch)
     set({ ideas })
   },
   moveIdea: (id, status, overId) => {
@@ -103,11 +134,13 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
       const newIndex = next.findIndex((idea) => idea.id === overId)
       const reordered = oldIndex >= 0 && newIndex >= 0 ? arrayMove(next, oldIndex, newIndex) : next
       persistIdeas(reordered)
+      void syncPatch(id, { status })
       set({ ideas: reordered, statusMessage: `Moved to ${status}` })
       return
     }
 
     persistIdeas(next)
+    void syncPatch(id, { status })
     set({ ideas: next, statusMessage: `Moved to ${status}` })
   },
   setActiveFilter: (activeFilter) => set({ activeFilter, screen: 'WORKBENCH' }),
@@ -119,6 +152,7 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
         : idea,
     )
     persistIdeas(ideas)
+    void syncPatch(id, { aiEnriched: true, aiAnalysis: analysis, status: 'PIPELINE' })
     set({ ideas, statusMessage: 'AI analysis merged' })
   },
   discardSelected: () => {
