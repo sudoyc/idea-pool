@@ -1,0 +1,26 @@
+services:
+  idea-workbench-dev:
+    image: node:24-alpine
+    working_dir: /app
+    command: >
+      sh -c "apk add --no-cache python3 make g++ && npm install &&
+      (npm run dev:server:watch & npm run dev:host)"
+    ports:
+      - "5173:5173"
+      - "3001:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      IDEA_POOL_TOKEN: ${IDEA_POOL_TOKEN:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      DATABASE_URL: file:/data/idea-pool-dev.db
+      VITE_API_PROXY_TARGET: http://127.0.0.1:3000
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./data:/data
+    restart: unless-stopped
