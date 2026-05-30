@@ -2,42 +2,57 @@ import 'dotenv/config'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { assertAuthConfiguration, login, logout, requireSessionOrToken, session } from './auth.js'
-import { deleteIdea, getIdea, listIdeas, patchIdea, upsertIdea } from './db.js'
+import type { RequestHandler } from 'express'
+import { assertAuthConfiguration, login, logout, requireAgentToken, requireSessionOrToken, session } from './auth.js'
+import {
+  createFileMetadata,
+  deleteFileMetadata,
+  deleteIdea,
+  getFile,
+  getIdea,
+  getSetting,
+  listFiles,
+  listIdeaEvents,
+  listIdeas,
+  patchIdea,
+  recordAiCompletion,
+  recordIdeaEvent,
+  setSetting,
+  upsertIdea,
+} from './db.js'
 import { completeIdea } from './llm.js'
-import type { IdeaRecord } from './types.js'
+import { deleteStoredFile, isSafeFilename, readStoredFile, writeStoredFile } from './storage.js'
+import type { AiAnalysis, IdeaRecord, IdeaSource, IdeaStatus } from './types.js'
 
-assertAuthConfiguration()
-
-const app = express()
 const port = Number(process.env.PORT ?? 3000)
-const distDir = resolve('dist')
 
-app.use(express.json({ limit: '1mb' }))
+const ideaStatuses: IdeaStatus[] = ['INBOX', 'PIPELINE', 'TRASH']
+const ideaSources: IdeaSource[] = ['local', 'agent', 'import', 'llm']
+const fileKinds = ['attachment', 'export', 'agent_pack', 'markdown', 'image']
+const settingsDefaults = {
+  workspaceName: 'Personal Idea Workbench',
+  llmModel: process.env.LLM_MODEL ?? 'fallback',
+  agentBasePath: '/api/agent/v1',
+  agentExposure: 'private',
+}
+const editableSettings = ['workspaceName', 'llmModel', 'agentExposure'] as const
+const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
-app.get('/api/health', (_request, response) => {
-  response.json({ ok: true })
-})
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'idea'
 
-app.get('/api/auth/session', session)
-app.post('/api/auth/login', login)
-app.post('/api/auth/logout', logout)
-
-app.use('/api', requireSessionOrToken)
-
-app.get('/api/ideas', (_request, response) => {
-  response.json({ ideas: listIdeas() })
-})
-
-app.post('/api/ideas', (request, response) => {
+const buildIdea = (body: Partial<IdeaRecord>, source: IdeaSource) => {
   const now = new Date().toISOString()
-  const body = request.body as Partial<IdeaRecord>
-  const idea: IdeaRecord = {
+  return {
     id: body.id ?? `idea-${Date.now().toString(36)}`,
     title: body.title ?? 'Untitled Seed',
     summary: body.summary ?? '',
     status: body.status ?? 'INBOX',
-    source: body.source ?? 'local',
+    source,
     tags: body.tags ?? ['seed'],
     whyNow: body.whyNow ?? '',
     mvpScope: body.mvpScope,
@@ -49,43 +64,376 @@ app.post('/api/ideas', (request, response) => {
     createdAt: body.createdAt ?? now,
     updatedAt: now,
     archivedAt: body.archivedAt ?? null,
-  }
-  response.status(201).json({ idea: upsertIdea(idea) })
-})
-
-app.patch('/api/ideas/:id', (request, response) => {
-  const idea = patchIdea(request.params.id, request.body as Partial<IdeaRecord>)
-  if (!idea) {
-    response.status(404).json({ error: 'Idea not found' })
-    return
-  }
-  response.json({ idea })
-})
-
-app.delete('/api/ideas/:id', (request, response) => {
-  response.json({ ok: deleteIdea(request.params.id) })
-})
-
-app.post('/api/ideas/:id/complete', async (request, response) => {
-  const requestIdea = (request.body as { idea?: IdeaRecord }).idea
-  const idea = getIdea(request.params.id) ?? requestIdea
-  if (!idea) {
-    response.status(404).json({ error: 'Idea not found' })
-    return
-  }
-
-  const aiAnalysis = await completeIdea(idea, (request.body as { notes?: string }).notes)
-  const updated = patchIdea(idea.id, { aiAnalysis, aiEnriched: true, status: 'PIPELINE' }) ?? { ...idea, aiAnalysis, aiEnriched: true }
-  response.json({ idea: updated, aiAnalysis })
-})
-
-if (existsSync(distDir)) {
-  app.use(express.static(distDir))
-  app.use((_request, response) => {
-    response.sendFile(join(distDir, 'index.html'))
-  })
+  } satisfies IdeaRecord
 }
 
-app.listen(port, () => {
-  console.log(`Personal Idea Workbench listening on :${port}`)
-})
+const completeAndPersistIdea = async (idea: IdeaRecord, notes?: string) => {
+  const aiAnalysis = await completeIdea(idea, notes)
+  const updated = patchIdea(idea.id, { aiAnalysis, aiEnriched: true, status: 'PIPELINE' }) ?? { ...idea, aiAnalysis, aiEnriched: true }
+
+  recordAiCompletion({
+    ideaId: idea.id,
+    provider: process.env.LLM_API_KEY ? 'remote' : 'local',
+    model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback'),
+    input: { idea, notes: notes ?? '' },
+    output: aiAnalysis,
+    status: 'succeeded',
+  })
+  recordIdeaEvent({
+    ideaId: idea.id,
+    type: 'completed_by_llm',
+    actor: 'llm',
+    payload: { status: 'succeeded' },
+  })
+
+  return { idea: updated, aiAnalysis }
+}
+
+const buildAgentPackMarkdown = (idea: IdeaRecord, aiAnalysis?: AiAnalysis) => {
+  const analysis = aiAnalysis ?? idea.aiAnalysis
+  const lines = [
+    `# ${idea.title}`,
+    '',
+    '## Workbench Context',
+    'Local-first Kanban + Spatial Detail View + AI Augmentation',
+    '',
+    '## Summary',
+    idea.summary || 'No summary provided.',
+    '',
+    '## Why Now',
+    idea.whyNow || 'No timing note provided.',
+    '',
+    '## MVP Scope',
+    idea.mvpScope || analysis?.mvpSuggestion || 'No MVP scope provided.',
+    '',
+    '## First Action',
+    idea.firstAction || analysis?.firstActions?.[0] || 'Define the first concrete action.',
+    '',
+    '## Tags',
+    idea.tags.length > 0 ? idea.tags.map((tag) => `- ${tag}`).join('\n') : '- seed',
+  ]
+
+  if (analysis) {
+    lines.push('', '## AI Analysis', analysis.mvpSuggestion, '', '### Risks', ...analysis.risks.map((risk) => `- ${risk}`))
+    lines.push('', '### First Actions', ...analysis.firstActions.map((action) => `- ${action}`))
+    lines.push('', '### Boundary Notes', analysis.boundaryNotes)
+  }
+
+  if (idea.scratchpad) {
+    lines.push('', '## Scratchpad', idea.scratchpad)
+  }
+
+  return `${lines.join('\n')}\n`
+}
+
+const getSettings = () =>
+  Object.fromEntries(
+    Object.entries(settingsDefaults).map(([key, defaultValue]) => {
+      const saved = getSetting(key)
+      return [key, saved ?? defaultValue]
+    }),
+  )
+
+const handleSettingsUpdate: RequestHandler = (request, response) => {
+  const body = request.body as Record<string, unknown>
+  for (const key of editableSettings) {
+    if (typeof body[key] === 'string') {
+      setSetting(key, body[key])
+    }
+  }
+  response.json({ settings: getSettings() })
+}
+
+const createContentFileHandler: RequestHandler = (request, response) => {
+  const idea = getIdea(routeParam(request.params.id))
+  if (!idea) {
+    response.status(404).json({ error: 'Idea not found' })
+    return
+  }
+
+  const body = request.body as { filename?: unknown; kind?: unknown; mimeType?: unknown; content?: unknown }
+  if (typeof body.filename !== 'string' || typeof body.kind !== 'string' || typeof body.content !== 'string') {
+    response.status(400).json({ error: 'filename, kind, and content are required' })
+    return
+  }
+  if (!isSafeFilename(body.filename)) {
+    response.status(400).json({ error: 'Unsafe filename' })
+    return
+  }
+
+  const storageKey = `${slugify(idea.id)}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${body.filename}`
+  const stored = writeStoredFile(storageKey, body.content)
+  const file = createFileMetadata({
+    ideaId: idea.id,
+    kind: body.kind,
+    filename: body.filename,
+    mimeType: typeof body.mimeType === 'string' ? body.mimeType : 'application/octet-stream',
+    sizeBytes: stored.sizeBytes,
+    storageKey,
+    sha256: stored.sha256,
+  })
+  response.status(201).json({ file })
+}
+
+const downloadFileHandler: RequestHandler = (request, response) => {
+  const file = getFile(routeParam(request.params.id))
+  if (!file) {
+    response.status(404).json({ error: 'File not found' })
+    return
+  }
+
+  try {
+    const content = readStoredFile(file.storageKey)
+    response.setHeader('Content-Type', file.mimeType ?? 'application/octet-stream')
+    response.send(content)
+  } catch {
+    response.status(404).json({ error: 'File content not found' })
+  }
+}
+
+const deleteFileHandler: RequestHandler = (request, response) => {
+  const file = getFile(routeParam(request.params.id))
+  if (!file) {
+    response.status(404).json({ error: 'File not found' })
+    return
+  }
+
+  deleteStoredFile(file.storageKey)
+  deleteFileMetadata(file.id)
+  response.json({ ok: true })
+}
+
+export const createApp = () => {
+  assertAuthConfiguration()
+
+  const app = express()
+  const distDir = resolve('dist')
+
+  app.use(express.json({ limit: '1mb' }))
+
+  app.get('/api/health', (_request, response) => {
+    response.json({ ok: true })
+  })
+
+  app.get('/api/auth/session', session)
+  app.post('/api/auth/login', login)
+  app.post('/api/auth/logout', logout)
+
+  const agentRouter = express.Router()
+  agentRouter.use(requireAgentToken)
+
+  agentRouter.get('/context', (_request, response) => {
+    response.json({
+      workspace: { name: 'Personal Idea Workbench' },
+      api: { version: 'v1' },
+      rules: { localFirst: true },
+      capabilities: ['ideas', 'events', 'completion', 'agent_pack', 'files'],
+    })
+  })
+
+  agentRouter.get('/schema', (_request, response) => {
+    response.json({ ideaStatuses, ideaSources, fileKinds })
+  })
+
+  agentRouter.get('/settings', (_request, response) => {
+    response.json({ settings: getSettings(), writable: false })
+  })
+
+  agentRouter.get('/ideas', (_request, response) => {
+    response.json({ ideas: listIdeas() })
+  })
+
+  agentRouter.get('/ideas/:id', (request, response) => {
+    const idea = getIdea(request.params.id)
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    response.json({ idea })
+  })
+
+  agentRouter.post('/ideas', (request, response) => {
+    const idea = upsertIdea(buildIdea(request.body as Partial<IdeaRecord>, 'agent'))
+    if (!idea) {
+      response.status(500).json({ error: 'Idea could not be saved' })
+      return
+    }
+    recordIdeaEvent({ ideaId: idea.id, type: 'created', actor: 'agent', payload: { endpoint: '/api/agent/v1/ideas' } })
+    response.status(201).json({ idea })
+  })
+
+  agentRouter.patch('/ideas/:id', (request, response) => {
+    const idea = patchIdea(request.params.id, request.body as Partial<IdeaRecord>)
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    recordIdeaEvent({ ideaId: idea.id, type: 'updated', actor: 'agent', payload: request.body })
+    response.json({ idea })
+  })
+
+  agentRouter.delete('/ideas/:id', (request, response) => {
+    response.json({ ok: deleteIdea(request.params.id) })
+  })
+
+  agentRouter.get('/ideas/:id/events', (request, response) => {
+    if (!getIdea(request.params.id)) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    response.json({ events: listIdeaEvents(request.params.id) })
+  })
+
+  agentRouter.post('/ideas/:id/events', (request, response) => {
+    if (!getIdea(request.params.id)) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    const body = request.body as { type?: string; payload?: unknown }
+    const event = recordIdeaEvent({ ideaId: request.params.id, type: body.type ?? 'agent_event', actor: 'agent', payload: body.payload })
+    response.status(201).json({ event })
+  })
+
+  agentRouter.post('/ideas/:id/complete', async (request, response) => {
+    const idea = getIdea(request.params.id)
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+
+    const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
+    response.json(result)
+  })
+
+  agentRouter.post('/ideas/:id/agent-pack', (request, response) => {
+    const idea = getIdea(request.params.id)
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+
+    const filename = `${slugify(idea.title)}-agent-pack.md`
+    const storageKey = `${idea.id}/${Date.now().toString(36)}-${filename}`
+    const stored = writeStoredFile(storageKey, buildAgentPackMarkdown(idea))
+    const file = createFileMetadata({
+      ideaId: idea.id,
+      kind: 'agent_pack',
+      filename,
+      mimeType: 'text/markdown',
+      sizeBytes: stored.sizeBytes,
+      storageKey,
+      sha256: stored.sha256,
+    })
+    recordIdeaEvent({ ideaId: idea.id, type: 'agent_pack_generated', actor: 'agent', payload: { fileId: file.id, storageKey } })
+    response.status(201).json({ file })
+  })
+
+  agentRouter.get('/ideas/:id/files', (request, response) => {
+    if (!getIdea(request.params.id)) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    response.json({ files: listFiles(request.params.id) })
+  })
+
+  agentRouter.post('/ideas/:id/files', (request, response) => {
+    if (!getIdea(request.params.id)) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    const body = request.body as { kind?: string; filename?: string; mimeType?: string; sizeBytes?: number; storageKey?: string; sha256?: string }
+    if (!body.kind || !body.filename || !body.storageKey) {
+      response.status(400).json({ error: 'kind, filename, and storageKey are required' })
+      return
+    }
+    if (!isSafeFilename(body.filename)) {
+      response.status(400).json({ error: 'Unsafe filename' })
+      return
+    }
+    const file = createFileMetadata({
+      ideaId: request.params.id,
+      kind: body.kind,
+      filename: body.filename,
+      mimeType: body.mimeType,
+      sizeBytes: body.sizeBytes,
+      storageKey: body.storageKey,
+      sha256: body.sha256,
+    })
+    response.status(201).json({ file })
+  })
+
+  agentRouter.post('/ideas/:id/files/content', createContentFileHandler)
+  agentRouter.get('/files/:id/download', downloadFileHandler)
+  agentRouter.delete('/files/:id', deleteFileHandler)
+
+  app.use('/api/agent/v1', agentRouter)
+
+  app.use('/api', requireSessionOrToken)
+
+  app.get('/api/settings', (_request, response) => {
+    response.json({ settings: getSettings() })
+  })
+  app.put('/api/settings', handleSettingsUpdate)
+
+  app.get('/api/ideas', (_request, response) => {
+    response.json({ ideas: listIdeas() })
+  })
+
+  app.post('/api/ideas', (request, response) => {
+    const body = request.body as Partial<IdeaRecord>
+    const idea = buildIdea(body, body.source ?? 'local')
+    response.status(201).json({ idea: upsertIdea(idea) })
+  })
+
+  app.patch('/api/ideas/:id', (request, response) => {
+    const idea = patchIdea(request.params.id, request.body as Partial<IdeaRecord>)
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    response.json({ idea })
+  })
+
+  app.delete('/api/ideas/:id', (request, response) => {
+    response.json({ ok: deleteIdea(request.params.id) })
+  })
+
+  app.post('/api/ideas/:id/complete', async (request, response) => {
+    const requestIdea = (request.body as { idea?: IdeaRecord }).idea
+    const idea = getIdea(request.params.id) ?? requestIdea
+    if (!idea) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+
+    const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
+    response.json(result)
+  })
+
+  app.post('/api/ideas/:id/files/content', createContentFileHandler)
+  app.get('/api/ideas/:id/files', (request, response) => {
+    const ideaId = routeParam(request.params.id)
+    if (!getIdea(ideaId)) {
+      response.status(404).json({ error: 'Idea not found' })
+      return
+    }
+    response.json({ files: listFiles(ideaId) })
+  })
+  app.get('/api/files/:id/download', downloadFileHandler)
+  app.delete('/api/files/:id', deleteFileHandler)
+
+  if (existsSync(distDir)) {
+    app.use(express.static(distDir))
+    app.use((_request, response) => {
+      response.sendFile(join(distDir, 'index.html'))
+    })
+  }
+
+  return app
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  createApp().listen(port, () => {
+    console.log(`Personal Idea Workbench listening on :${port}`)
+  })
+}

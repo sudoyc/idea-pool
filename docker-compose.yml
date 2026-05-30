@@ -2,10 +2,14 @@ services:
   idea-workbench:
     build: .
     ports:
-      - "3000:3000"
+      - "${IDEA_POOL_PORT:-3000}:3000"
     environment:
       PORT: 3000
-      IDEA_POOL_TOKEN: ${IDEA_POOL_TOKEN:-change-me}
+      IDEA_POOL_AUTH_ENABLED: "true"
+      IDEA_POOL_PASSWORD: ${IDEA_POOL_PASSWORD:?set IDEA_POOL_PASSWORD}
+      IDEA_POOL_TOKEN: ${IDEA_POOL_TOKEN:?set IDEA_POOL_TOKEN}
+      IDEA_POOL_SESSION_SECRET: ${IDEA_POOL_SESSION_SECRET:?set IDEA_POOL_SESSION_SECRET}
+      IDEA_POOL_DATA_DIR: /data
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
