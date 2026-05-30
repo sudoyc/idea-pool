@@ -1,6 +1,8 @@
 import {
   Archive,
   ChevronLeft,
+  Circle,
+  GalleryVerticalEnd,
   Inbox,
   KanbanSquare,
   Lock,
@@ -12,7 +14,8 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   DndContext,
   DragOverlay,
@@ -24,35 +27,51 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import './App.css'
-import { useIdeaStore } from './store/useIdeaStore'
-import { statusLabels, statusOrder, type IdeaStatus, type WorkbenchIdea } from './workbenchTypes'
+import { useI18n } from './i18n/useI18n'
+import type { TranslationKey } from './i18n/messages'
+import type { Locale } from './i18n/types'
+import { getVisibleIdeasForLens, useIdeaStore } from './store/useIdeaStore'
+import {
+  agentEndpointSummary,
+  buildDragClassificationTargets,
+  buildIdeaPoolLenses,
+  buildSettingsControls,
+  buildSettingsSections,
+  buildSyncStatusCopy,
+  buildWorkspacePoolModelCopy,
+  type SettingsControl,
+} from './workbenchProductModel'
+import { statusOrder, type IdeaPoolLens, type IdeaStatus, type WorkbenchIdea } from './workbenchTypes'
 
 type AuthState = 'checking' | 'authenticated' | 'anonymous'
 type AuthMode = 'disabled' | 'password' | 'token'
+type WorkbenchSettings = Record<SettingsControl['key'], string>
+type IdeaFile = { id: string; filename: string; kind: string; sizeBytes?: number }
 
-const navItems: Array<{ label: string; status: IdeaStatus; icon: typeof Inbox }> = [
-  { label: 'Inbox', status: 'INBOX', icon: Inbox },
-  { label: 'Pipeline', status: 'PIPELINE', icon: KanbanSquare },
-  { label: 'Trash', status: 'TRASH', icon: Trash2 },
-]
-
-const columnDescriptions: Record<IdeaStatus, string> = {
-  INBOX: 'local drafts',
-  PIPELINE: 'completed by AI',
-  TRASH: 'discarded',
+const lensIcons: Record<IdeaPoolLens, typeof Inbox> = {
+  ALL: GalleryVerticalEnd,
+  INBOX: Circle,
+  PIPELINE: KanbanSquare,
+  TRASH: Trash2,
 }
 
+const classificationTargetId = (status: IdeaStatus) => `classification:${status}`
+const dateTimeLocaleByUiLocale: Record<Locale, string> = { zh: 'zh-CN', en: 'en-US' }
+
 function App() {
+  const { locale, setLocale, t } = useI18n()
   const ideas = useIdeaStore((state) => state.ideas)
-  const activeFilter = useIdeaStore((state) => state.activeFilter)
+  const activeLens = useIdeaStore((state) => state.activeLens)
   const screen = useIdeaStore((state) => state.screen)
   const detailOpen = useIdeaStore((state) => state.detailOpen)
   const selectedIdeaId = useIdeaStore((state) => state.selectedIdeaId)
   const statusMessage = useIdeaStore((state) => state.statusMessage)
-  const setActiveFilter = useIdeaStore((state) => state.setActiveFilter)
+  const sync = useIdeaStore((state) => state.sync)
+  const flushSyncQueue = useIdeaStore((state) => state.flushSyncQueue)
+  const setIdeaPoolLens = useIdeaStore((state) => state.setIdeaPoolLens)
   const setScreen = useIdeaStore((state) => state.setScreen)
   const closeDetail = useIdeaStore((state) => state.closeDetail)
   const createIdea = useIdeaStore((state) => state.createIdea)
@@ -64,9 +83,16 @@ function App() {
   const [authEnabled, setAuthEnabled] = useState(true)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
+  const ideaPoolLenses = useMemo(() => buildIdeaPoolLenses(locale), [locale])
+  const dragClassificationTargets = useMemo(() => buildDragClassificationTargets(locale), [locale])
+  const syncStatusCopy = useMemo(() => buildSyncStatusCopy(locale), [locale])
+  const workspacePoolModelCopy = useMemo(() => buildWorkspacePoolModelCopy(locale), [locale])
+
   const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0]
   const activeDragIdea = ideas.find((idea) => idea.id === activeDragId)
   const tags = Array.from(new Set(ideas.flatMap((idea) => idea.tags))).slice(0, 8)
+  const visibleIdeas = getVisibleIdeasForLens(ideas, activeLens)
+  const activeLensModel = ideaPoolLenses.find((lens) => lens.id === activeLens) ?? ideaPoolLenses[0]
 
   const loadRemoteIdeas = useCallback(async () => {
     try {
@@ -112,7 +138,7 @@ function App() {
     () =>
       statusOrder.reduce(
         (result, status) => ({ ...result, [status]: ideas.filter((idea) => idea.status === status).length }),
-        {} as Record<IdeaStatus, number>,
+        { ALL: ideas.length } as Record<IdeaPoolLens, number>,
       ),
     [ideas],
   )
@@ -127,10 +153,16 @@ function App() {
     setActiveDragId(null)
     if (!overId) return
 
+    const classificationTarget = dragClassificationTargets.find((target) => classificationTargetId(target.status) === overId)
+    if (classificationTarget) {
+      moveIdea(activeId, classificationTarget.status)
+      return
+    }
+
+    const movingIdea = ideas.find((idea) => idea.id === activeId)
     const overIdea = ideas.find((idea) => idea.id === overId)
-    const overStatus = statusOrder.includes(overId as IdeaStatus) ? (overId as IdeaStatus) : overIdea?.status
-    if (!overStatus) return
-    moveIdea(activeId, overStatus, overIdea?.id)
+    if (!movingIdea || !overIdea || movingIdea.id === overIdea.id) return
+    moveIdea(activeId, movingIdea.status, overIdea.id)
   }
 
   useEffect(() => {
@@ -182,7 +214,7 @@ function App() {
     })
 
     if (!response.ok) {
-      throw new Error('登录失败，请检查密码或 token。')
+      throw new Error(t('auth.error.loginFailed'))
     }
 
     const payload = (await response.json()) as { authEnabled: boolean; authMode: AuthMode; authenticated: boolean }
@@ -210,32 +242,33 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <span className="dot" />
-          Workbench
+          {t('app.brand')}
         </div>
 
-        <nav className="nav-section" aria-label="Views">
-          <div className="nav-title">Views</div>
-          {navItems.map((item) => {
-            const Icon = item.icon
+        <nav className="nav-section" aria-label={t('nav.poolLenses')}>
+          <div className="nav-title">{t('nav.poolLenses')}</div>
+          {ideaPoolLenses.map((lens) => {
+            const Icon = lensIcons[lens.id]
             return (
               <button
-                className={`nav-item ${screen === 'WORKBENCH' && activeFilter === item.status ? 'active' : ''}`}
-                key={item.status}
+                className={`nav-item ${screen === 'WORKBENCH' && activeLens === lens.id ? 'active' : ''}`}
+                key={lens.id}
                 type="button"
-                onClick={() => setActiveFilter(item.status)}
+                title={lens.description}
+                onClick={() => setIdeaPoolLens(lens.id)}
               >
                 <span className="nav-item-left">
                   <Icon className="icon" />
-                  <span>{item.label}</span>
+                  <span>{lens.label}</span>
                 </span>
-                <span className="count">{counts[item.status]}</span>
+                <span className="count">{counts[lens.id]}</span>
               </button>
             )
           })}
         </nav>
 
-        <nav className="nav-section nav-section--tags" aria-label="Tags">
-          <div className="nav-title">Tags</div>
+        <nav className="nav-section nav-section--tags" aria-label={t('nav.tags')}>
+          <div className="nav-title">{t('nav.tags')}</div>
           <div className="tag-list-nav">
             {tags.map((tag) => (
               <button className="tag-item" key={tag} type="button">
@@ -246,42 +279,47 @@ function App() {
           </div>
         </nav>
 
-        <nav className="nav-section nav-section--system" aria-label="System">
-          <div className="nav-title">System</div>
-            <button
-              className={`nav-item ${screen === 'SETTINGS' ? 'active' : ''}`}
-              type="button"
-              onClick={() => {
-                closeDetail()
-                setScreen('SETTINGS')
-              }}
-            >
+        <nav className="nav-section nav-section--system" aria-label={t('nav.system')}>
+          <div className="nav-title">{t('nav.system')}</div>
+          <button
+            className={`nav-item ${screen === 'SETTINGS' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              closeDetail()
+              setScreen('SETTINGS')
+            }}
+          >
             <span className="nav-item-left">
               <Settings className="icon" />
-              <span>Settings</span>
+              <span>{t('nav.settings')}</span>
             </span>
           </button>
         </nav>
       </aside>
 
-      <section className="workspace-wrapper">
+      <section className={`workspace-wrapper ${activeDragId ? 'dragging-card' : ''}`}>
         <div className={`workspace-inner ${detailOpen ? 'shrink' : ''}`} id="workspaceInner">
           <div className="topbar">
             <div className="view-title">
-              {screen === 'SETTINGS' ? <Settings className="icon" /> : <KanbanSquare className="icon" />}
-              {screen === 'SETTINGS' ? 'Settings' : navItems.find((item) => item.status === activeFilter)?.label}
+              {screen === 'SETTINGS' ? <Settings className="icon" /> : <GalleryVerticalEnd className="icon" />}
+              {screen === 'SETTINGS' ? t('settings.title') : activeLensModel.label}
             </div>
             <div className="topbar-actions">
-              {statusMessage && <span className="status-message">{statusMessage}</span>}
+              <LocaleSwitcher locale={locale} setLocale={setLocale} />
+              {statusMessage && <span className="status-message">{t(statusMessage)}</span>}
+              <button className={`sync-chip sync-chip--${sync.status}`} type="button" onClick={flushSyncQueue}>
+                {syncStatusCopy[sync.status]}
+                {sync.pendingCount > 0 ? ` (${sync.pendingCount})` : ''}
+              </button>
               {screen === 'WORKBENCH' ? (
                 <button className="btn primary" type="button" onClick={createIdea}>
                   <Plus className="icon" />
-                  New Seed
+                  {t('action.newSeed')}
                 </button>
               ) : (
                 <button className="btn" type="button" onClick={() => setScreen('WORKBENCH')}>
                   <KanbanSquare className="icon" />
-                  Return to Board
+                  {t('action.returnToWorkbench')}
                 </button>
               )}
             </div>
@@ -295,51 +333,104 @@ function App() {
               sensors={sensors}
             >
               <div className="workspace-layout">
-                <div className="board">
-                  {statusOrder.map((status) => (
-                    <BoardColumn
-                      description={columnDescriptions[status]}
-                      focus={activeFilter === status}
-                      ideas={ideas.filter((idea) => idea.status === status)}
-                      key={status}
-                      status={status}
-                    />
-                  ))}
-                </div>
-                <InspectorRail activeFilter={activeFilter} idea={selectedIdea} />
+                <IdeaPool ideas={visibleIdeas} lens={activeLensModel} totalCount={ideas.length} workspacePoolModelCopy={workspacePoolModelCopy} />
               </div>
-              <DragOverlay>{activeDragIdea ? <IdeaCard idea={activeDragIdea} overlay /> : null}</DragOverlay>
+              <DragClassificationTargets isDragging={Boolean(activeDragId)} />
+              {createPortal(
+                <DragOverlay>{activeDragIdea ? <IdeaCard idea={activeDragIdea} locale={locale} overlay /> : null}</DragOverlay>,
+                document.body,
+              )}
             </DndContext>
           ) : (
             <SettingsView authEnabled={authEnabled} authMode={authMode} onLogout={handleLogout} />
           )}
         </div>
 
-        {selectedIdea && <DetailView idea={selectedIdea} onClose={handleCloseDetail} />}
+        {selectedIdea && <DetailView idea={selectedIdea} locale={locale} onClose={handleCloseDetail} />}
       </section>
     </main>
   )
 }
 
-function BoardColumn({ description, focus, ideas, status }: { description: string; focus: boolean; ideas: WorkbenchIdea[]; status: IdeaStatus }) {
-  const { setNodeRef } = useDroppable({ id: status })
+function LocaleSwitcher({ locale, setLocale }: { locale: Locale; setLocale: (locale: Locale) => void }) {
+  const { t } = useI18n()
 
   return (
-    <section className={`column ${focus ? 'column--focus' : 'column--muted'}`} ref={setNodeRef}>
-      <div className="col-header">
+    <label className="settings-label locale-switcher">
+      {t('locale.switcher.label')}
+      <select className="settings-input" onChange={(event) => setLocale(event.target.value as Locale)} value={locale}>
+        <option value="zh">{t('locale.zh')}</option>
+        <option value="en">{t('locale.en')}</option>
+      </select>
+    </label>
+  )
+}
+
+function IdeaPool({
+  ideas,
+  lens,
+  totalCount,
+  workspacePoolModelCopy,
+}: {
+  ideas: WorkbenchIdea[]
+  lens: ReturnType<typeof buildIdeaPoolLenses>[number]
+  totalCount: number
+  workspacePoolModelCopy: ReturnType<typeof buildWorkspacePoolModelCopy>
+}) {
+  const { t } = useI18n()
+
+  return (
+    <section className="pool-panel" aria-label={t('workbench.pool.aria')}>
+      <div className="pool-header">
         <div>
-          <span className="col-title">{statusLabels[status]}</span>
-          <span className="col-description">{description}</span>
+          <div className="pool-kicker">{t('workbench.pool.kicker')}</div>
+          <h1 className="pool-title">{lens.label}</h1>
+          <p className="pool-subtitle">
+            {workspacePoolModelCopy.statusModel} {workspacePoolModelCopy.classification}
+          </p>
         </div>
-        <span className="count">{ideas.length}</span>
+        <div className="pool-tools">
+          <span className="chip">{ideas.length} {t('workbench.pool.visibleCount')}</span>
+          <span className="chip">{totalCount} {t('workbench.pool.totalCount')}</span>
+        </div>
       </div>
-      <SortableContext items={ideas.map((idea) => idea.id)} strategy={verticalListSortingStrategy}>
-        <div className="column-body">
+      <SortableContext items={ideas.map((idea) => idea.id)} strategy={rectSortingStrategy}>
+        <div className="idea-pool">
           {ideas.map((idea) => (
             <SortableIdeaCard idea={idea} key={idea.id} />
           ))}
+          {ideas.length === 0 && <div className="empty-pool">{t('workbench.pool.empty')}</div>}
         </div>
       </SortableContext>
+    </section>
+  )
+}
+
+function DragClassificationTargets({ isDragging }: { isDragging: boolean }) {
+  const { locale, t } = useI18n()
+  const targets = useMemo(() => buildDragClassificationTargets(locale), [locale])
+
+  return (
+    <div className="drag-classification-targets" aria-hidden={!isDragging} aria-label={t('drag.targets.aria')}>
+      {targets.map((target) => (
+        <DragClassificationTarget key={target.status} target={target} />
+      ))}
+    </div>
+  )
+}
+
+function DragClassificationTarget({ target }: { target: ReturnType<typeof buildDragClassificationTargets>[number] }) {
+  const { isOver, setNodeRef } = useDroppable({ id: classificationTargetId(target.status) })
+  const { t } = useI18n()
+
+  return (
+    <section className={`drop-window drop-window--${target.status.toLowerCase()} ${isOver ? 'over' : ''}`} ref={setNodeRef}>
+      <div>
+        <div className="drop-label">{t('drag.targets.label')}</div>
+        <h3>{target.label}</h3>
+        <p>{target.description}</p>
+      </div>
+      <div className="drop-hint">{t('drag.targets.hint')}</div>
     </section>
   )
 }
@@ -356,7 +447,21 @@ function SortableIdeaCard({ idea }: { idea: WorkbenchIdea }) {
   )
 }
 
-function IdeaCard({ dragging = false, idea, onOpen, overlay = false }: { dragging?: boolean; idea: WorkbenchIdea; onOpen?: () => void; overlay?: boolean }) {
+function IdeaCard({
+  dragging = false,
+  idea,
+  onOpen,
+  overlay = false,
+}: {
+  dragging?: boolean
+  idea: WorkbenchIdea
+  locale?: Locale
+  onOpen?: () => void
+  overlay?: boolean
+}) {
+  const { t } = useI18n()
+  const statusKey = `idea.status.${idea.status}` as TranslationKey
+
   return (
     <article
       className={`card ${idea.aiEnriched ? 'ai-card' : ''} ${dragging ? 'dragging' : ''} ${overlay ? 'overlay-card' : ''}`}
@@ -366,14 +471,14 @@ function IdeaCard({ dragging = false, idea, onOpen, overlay = false }: { draggin
       <p>{idea.summary}</p>
       <div className="card-meta">
         <span className="pill">{idea.tags[0] ?? 'seed'}</span>
-        <span className="card-source">{idea.source}</span>
+        <span className="pill status-pill">{t(statusKey)}</span>
       </div>
       <div className="card-submeta">
         <span>{idea.firstAction ?? idea.whyNow}</span>
         {idea.aiEnriched && (
           <span className="pill ai">
             <Sparkles className="icon icon-sm" />
-            AI
+            {t('term.ai')}
           </span>
         )}
       </div>
@@ -381,7 +486,10 @@ function IdeaCard({ dragging = false, idea, onOpen, overlay = false }: { draggin
   )
 }
 
-function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => void }) {
+function DetailView({ idea, onClose }: { idea: WorkbenchIdea; locale: Locale; onClose: () => void }) {
+  const { locale, t } = useI18n()
+  const statusKey = `idea.status.${idea.status}` as TranslationKey
+  const sourceKey = `idea.source.${idea.source}` as TranslationKey
   const detailOpen = useIdeaStore((state) => state.detailOpen)
   const updateIdea = useIdeaStore((state) => state.updateIdea)
   const enrichIdea = useIdeaStore((state) => state.enrichIdea)
@@ -433,16 +541,16 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => voi
       <div className="detail-topbar">
         <button className="btn-back" type="button" onClick={onClose}>
           <ChevronLeft className="icon" />
-          Back
+          {t('action.back')}
         </button>
         <div className="detail-actions">
           <button className="btn" type="button" onClick={discardSelected}>
             <Archive className="icon" />
-            Discard
+            {t('action.discard')}
           </button>
           <button className="btn primary" type="button" onClick={() => updateIdea(idea.id, {})}>
             <Save className="icon" />
-            Save Changes
+            {t('action.saveChanges')}
           </button>
         </div>
       </div>
@@ -458,45 +566,23 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => voi
               ))}
             </div>
 
-            <input
-              className="title-input"
-              onChange={(event) => updateIdea(idea.id, { title: event.target.value })}
-              type="text"
-              value={idea.title}
-            />
-            <textarea
-              className="summary-input"
-              onChange={(event) => updateIdea(idea.id, { summary: event.target.value })}
-              ref={summaryRef}
-              value={idea.summary}
-            />
+            <input className="title-input" onChange={(event) => updateIdea(idea.id, { title: event.target.value })} type="text" value={idea.title} />
+            <textarea className="summary-input" onChange={(event) => updateIdea(idea.id, { summary: event.target.value })} ref={summaryRef} value={idea.summary} />
 
-            <div className="section-title">WHY NOW</div>
-            <textarea
-              className="editor-box"
-              onChange={(event) => updateIdea(idea.id, { whyNow: event.target.value })}
-              value={idea.whyNow}
-            />
+            <div className="section-title">{t('detail.section.whyNow')}</div>
+            <textarea className="editor-box" onChange={(event) => updateIdea(idea.id, { whyNow: event.target.value })} value={idea.whyNow} />
 
-            <div className="section-title">MVP SCOPE</div>
-            <textarea
-              className="editor-box"
-              onChange={(event) => updateIdea(idea.id, { mvpScope: event.target.value })}
-              value={idea.mvpScope ?? ''}
-            />
+            <div className="section-title">{t('detail.section.mvpScope')}</div>
+            <textarea className="editor-box" onChange={(event) => updateIdea(idea.id, { mvpScope: event.target.value })} value={idea.mvpScope ?? ''} />
 
-            <div className="section-title">FIRST ACTION</div>
-            <textarea
-              className="editor-box"
-              onChange={(event) => updateIdea(idea.id, { firstAction: event.target.value })}
-              value={idea.firstAction ?? ''}
-            />
+            <div className="section-title">{t('detail.section.firstAction')}</div>
+            <textarea className="editor-box" onChange={(event) => updateIdea(idea.id, { firstAction: event.target.value })} value={idea.firstAction ?? ''} />
 
-            <div className="section-title">SCRATCHPAD (草稿本)</div>
+            <div className="section-title">{t('detail.section.scratchpad')}</div>
             <textarea
               className="editor-box editor-box--mono"
               onChange={(event) => updateIdea(idea.id, { scratchpad: event.target.value })}
-              placeholder="// write some messy thoughts or pseudo code..."
+              placeholder={t('detail.scratchpad.placeholder')}
               value={idea.scratchpad}
             />
           </div>
@@ -507,10 +593,10 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => voi
                 <div className="ai-header">
                   <span>
                     <Sparkles className="icon" />
-                    AI 维度扩展
+                    {t('detail.ai.title')}
                   </span>
                   <button className="btn primary" disabled={aiBusy} type="button" onClick={runAi}>
-                    {aiBusy ? 'Processing...' : idea.aiEnriched ? 'Re-generate' : '生成边界评估'}
+                    {aiBusy ? t('detail.ai.processing') : idea.aiEnriched ? t('detail.ai.regenerate') : t('detail.ai.generate')}
                   </button>
                 </div>
                 <AiAnalysisText busy={aiBusy} idea={idea} />
@@ -518,21 +604,15 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => voi
             </div>
 
             <div className="rail-section">
-              <div className="section-title">NOTES / CHECKLIST</div>
-              <div className="rail-note">当前 detail 已与 filter 解耦。切换左侧栏位不会主动关闭这张卡片。</div>
-              <ul className="rail-list">
-                <li>先确认 MVP 是否足够小</li>
-                <li>再决定是否需要 LLM 补全</li>
-                <li>最后再生成 Agent Pack</li>
-              </ul>
+              <FileHandoffPanel ideaId={idea.id} />
             </div>
 
             <div className="rail-section">
-              <div className="section-title">METADATA</div>
+              <div className="section-title">{t('detail.section.metadata')}</div>
               <dl className="meta-list">
-                <div><dt>Status</dt><dd>{idea.status}</dd></div>
-                <div><dt>Source</dt><dd>{idea.source}</dd></div>
-                <div><dt>Updated</dt><dd>{new Date(idea.updatedAt).toLocaleString('zh-CN')}</dd></div>
+                <div><dt>{t('detail.field.status')}</dt><dd>{t(statusKey)}</dd></div>
+                <div><dt>{t('detail.field.source')}</dt><dd>{t(sourceKey)}</dd></div>
+                <div><dt>{t('detail.field.updated')}</dt><dd>{new Date(idea.updatedAt).toLocaleString(dateTimeLocaleByUiLocale[locale])}</dd></div>
               </dl>
             </div>
           </aside>
@@ -542,65 +622,195 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; onClose: () => voi
   )
 }
 
-function InspectorRail({ activeFilter, idea }: { activeFilter: IdeaStatus; idea?: WorkbenchIdea }) {
+function FileHandoffPanel({ ideaId }: { ideaId: string }) {
+  const { t } = useI18n()
+  const [files, setFiles] = useState<IdeaFile[]>([])
+  const [content, setContent] = useState('')
+  const [filename, setFilename] = useState('agent-handoff.md')
+  const [messageKey, setMessageKey] = useState<TranslationKey | null>(null)
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/ideas/${ideaId}/files`)
+      if (!response.ok) return
+      const payload = (await response.json()) as { files?: IdeaFile[] }
+      setFiles(payload.files ?? [])
+    } catch {
+      setMessageKey('detail.files.offline')
+    }
+  }, [ideaId])
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadFiles()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadFiles])
+
+  const upload = async () => {
+    if (!content.trim()) return
+    const response = await fetch(`/api/ideas/${ideaId}/files/content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, kind: 'markdown', mimeType: 'text/markdown', content }),
+    })
+    if (!response.ok) {
+      setMessageKey('detail.files.uploadFailed')
+      return
+    }
+    setContent('')
+    setMessageKey('detail.files.uploaded')
+    await loadFiles()
+  }
+
+  const deleteFile = async (id: string) => {
+    const response = await fetch(`/api/files/${id}`, { method: 'DELETE' })
+    if (!response.ok) {
+      setMessageKey('detail.files.deleteFailed')
+      return
+    }
+    setMessageKey('detail.files.deleted')
+    await loadFiles()
+  }
+
   return (
-    <aside className="inspector-rail">
-      <section className="inspector-card">
-        <div className="section-title">FOCUS FILTER</div>
-        <h3>{statusLabels[activeFilter]}</h3>
-        <p>左侧栏位现在作为过滤器工作，其它列会保留在背景中，避免右侧空间空置。</p>
-      </section>
-
-      <section className="inspector-card">
-        <div className="section-title">CURRENT SELECTION</div>
-        <h3>{idea?.title ?? 'No idea selected'}</h3>
-        <p>{idea?.summary ?? '打开一张卡片后，这里可以提供 quick notes、history 和 agent actions。'}</p>
-      </section>
-
-      <section className="inspector-card">
-        <div className="section-title">NEXT STEPS</div>
-        <ul className="inspector-list">
-          <li>增加 Notes / Checklist 持久化</li>
-          <li>把 inspector 接入真实 idea events</li>
-          <li>接入登录态与 remote sync</li>
-        </ul>
-      </section>
-    </aside>
+    <div className="file-panel">
+      <div className="section-title">{t('detail.files.title')}</div>
+      <input className="settings-input" onChange={(event) => setFilename(event.target.value)} type="text" value={filename} />
+      <textarea
+        className="editor-box editor-box--compact editor-box--mono"
+        onChange={(event) => setContent(event.target.value)}
+        placeholder={t('detail.files.placeholder')}
+        value={content}
+      />
+      <button className="btn primary" disabled={!content.trim()} type="button" onClick={upload}>
+        {t('action.uploadMarkdown')}
+      </button>
+      {messageKey && <div className="rail-note file-message">{t(messageKey)}</div>}
+      <div className="file-list">
+        {files.map((file) => (
+          <div className="file-row" key={file.id}>
+            <span>{file.filename}</span>
+            <div className="file-actions">
+              <a className="btn btn-small" href={`/api/files/${file.id}/download`}>
+                {t('action.download')}
+              </a>
+              <button className="btn btn-small" type="button" onClick={() => deleteFile(file.id)}>
+                {t('action.delete')}
+              </button>
+            </div>
+          </div>
+        ))}
+        {files.length === 0 && <div className="rail-note">{t('detail.files.empty')}</div>}
+      </div>
+    </div>
   )
 }
 
 function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolean; authMode: AuthMode; onLogout: () => void }) {
+  const { locale, t } = useI18n()
+  const settingsSections = useMemo(() => buildSettingsSections(locale), [locale])
+  const settingsControls = useMemo(() => buildSettingsControls(locale), [locale])
+  const securitySection = settingsSections.find((section) => section.id === 'security')
+  const [settings, setSettings] = useState<WorkbenchSettings>({
+    workspaceName: 'Personal Idea Workbench',
+    llmModel: 'local-fallback',
+    agentExposure: 'private',
+  })
+  const [saving, setSaving] = useState(false)
+  const [messageKey, setMessageKey] = useState<TranslationKey | null>(null)
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await fetch('/api/settings')
+        if (!response.ok) return
+        const payload = (await response.json()) as { settings?: Partial<WorkbenchSettings> }
+        setSettings((current) => ({ ...current, ...payload.settings }))
+      } catch {
+        setMessageKey('settings.localDefaults')
+      }
+    }
+    void loadSettings()
+  }, [])
+
+  const saveSettings = async () => {
+    setSaving(true)
+    setMessageKey(null)
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      })
+      setMessageKey(response.ok ? 'settings.saved' : 'settings.saveFailed')
+    } catch {
+      setMessageKey('settings.saveFailed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <section className="settings-view">
       <div className="settings-grid">
+        {settingsSections.map((section) => (
+          <section className={`settings-card ${section.id === 'general' ? 'settings-card--hero' : ''}`} key={section.id}>
+            <div className="section-title">{section.title}</div>
+            <h2>{section.id === 'general' ? t('app.title') : section.title}</h2>
+            <p>{section.summary}</p>
+            <ul className="settings-facts">
+              {section.facts.map((fact) => (
+                <li key={fact}>{fact}</li>
+              ))}
+              {section.id === 'agent' && <li>{agentEndpointSummary.endpoints.join(' | ')}</li>}
+            </ul>
+          </section>
+        ))}
+
         <section className="settings-card settings-card--hero">
-          <div className="section-title">GENERAL</div>
-          <h2>Personal Idea Workbench</h2>
-          <p>这是一个保留概念的 Settings 页面骨架，后续用于承载 AI、Agent API、存储与安全相关配置。</p>
+          <div className="section-title">{t('settings.controls.title')}</div>
+          <div className="settings-controls">
+            {settingsControls.map((control) => (
+              <label className="settings-label" key={control.key}>
+                {control.label}
+                {control.input === 'select' ? (
+                  <select
+                    className="settings-input"
+                    onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
+                    value={settings[control.key]}
+                  >
+                    {control.options?.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="settings-input"
+                    onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
+                    type="text"
+                    value={settings[control.key]}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          <button className="btn primary settings-action" disabled={saving} type="button" onClick={saveSettings}>
+            {saving ? t('action.saving') : t('action.saveSettings')}
+          </button>
+          {messageKey && <p className="settings-message">{t(messageKey)}</p>}
         </section>
 
-        <section className="settings-card">
-          <div className="section-title">AI</div>
-          <p>当前模式：LLM 只补全选中的 idea，不自动选题、不自动移动卡片。</p>
-        </section>
-
-        <section className="settings-card">
-          <div className="section-title">AGENT API</div>
-          <p>预留 `/api/agent/v1` 的上下文、idea CRUD、completion 和 agent pack 接口。</p>
-        </section>
-
-        <section className="settings-card">
-          <div className="section-title">STORAGE</div>
-          <p>SQLite 保存结构化数据；文件导出与附件保存到 `/data/files`。</p>
-        </section>
-
-        <section className="settings-card">
-          <div className="section-title">SECURITY</div>
-          <p><Lock className="icon settings-inline-icon" /> 当前模式：{authEnabled ? authMode : 'disabled'}。Web 使用 session cookie，agent 使用 Bearer token。</p>
+        <section className="settings-card settings-card--session">
+          <div className="section-title">{t('settings.session.title')}</div>
+          <p>
+            <Lock className="icon settings-inline-icon" /> {t('settings.session.currentMode')}: {authEnabled ? authMode : t('settings.session.mode.disabled')}. {securitySection?.facts.join(' / ')}.
+          </p>
           {authEnabled && (
             <button className="btn settings-action" type="button" onClick={onLogout}>
               <LogOut className="icon" />
-              Sign out
+              {t('action.signOut')}
             </button>
           )}
         </section>
@@ -610,33 +820,36 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
 }
 
 function LoadingScreen() {
+  const { t } = useI18n()
+
   return (
     <main className="auth-screen">
       <div className="auth-panel auth-panel--loading">
         <div className="brand auth-brand">
           <span className="dot" />
-          Workbench
+          {t('app.brand')}
         </div>
-        <h1>Checking session</h1>
-        <p>正在确认当前工作台的访问权限与本地状态。</p>
+        <h1>{t('loading.title')}</h1>
+        <p>{t('loading.body')}</p>
       </div>
     </main>
   )
 }
 
 function LoginScreen({ authMode, onLogin }: { authMode: AuthMode; onLogin: (input: { password?: string; token?: string }) => Promise<void> }) {
+  const { t } = useI18n()
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitting(true)
     setError('')
     try {
       await onLogin(authMode === 'token' ? { token: value } : { password: value })
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : '登录失败')
+      setError(loginError instanceof Error ? loginError.message : t('auth.error.generic'))
     } finally {
       setSubmitting(false)
     }
@@ -647,13 +860,13 @@ function LoginScreen({ authMode, onLogin }: { authMode: AuthMode; onLogin: (inpu
       <form className="auth-panel" onSubmit={submit}>
         <div className="brand auth-brand">
           <span className="dot" />
-          Workbench
+          {t('app.brand')}
         </div>
-        <div className="auth-eyebrow">Private Access</div>
-        <h1>Personal Idea Workbench</h1>
-        <p>输入{authMode === 'token' ? '访问 token' : '登录密码'}，进入你的个人灵感工作台。</p>
+        <div className="auth-eyebrow">{t('auth.privateAccess')}</div>
+        <h1>{t('auth.title')}</h1>
+        <p>{authMode === 'token' ? t('auth.prompt.token') : t('auth.prompt.password')}</p>
         <label className="auth-label">
-          {authMode === 'token' ? 'Access token' : 'Password'}
+          {authMode === 'token' ? t('auth.tokenLabel') : t('auth.passwordLabel')}
           <input
             autoFocus
             className="auth-input"
@@ -665,7 +878,7 @@ function LoginScreen({ authMode, onLogin }: { authMode: AuthMode; onLogin: (inpu
         {error && <div className="auth-error">{error}</div>}
         <button className="btn primary auth-submit" disabled={submitting || value.trim().length === 0} type="submit">
           <Lock className="icon" />
-          {submitting ? 'Signing in...' : 'Sign in'}
+          {submitting ? t('action.signingIn') : t('auth.submit')}
         </button>
       </form>
     </main>
@@ -673,31 +886,29 @@ function LoginScreen({ authMode, onLogin }: { authMode: AuthMode; onLogin: (inpu
 }
 
 function AiAnalysisText({ busy, idea }: { busy: boolean; idea: WorkbenchIdea }) {
+  const { t } = useI18n()
+
   if (busy) {
-    return <div className="ai-text ai-text--loading">正在分析知识库与技术边界...</div>
+    return <div className="ai-text ai-text--loading">{t('detail.ai.loading')}</div>
   }
 
   if (!idea.aiAnalysis) {
-    return (
-      <div className="ai-text">
-        当前灵感处于早期。让 AI 辅助评估核心边界，补全前 30 分钟的行动指南与潜在的范围蔓延风险。
-      </div>
-    )
+    return <div className="ai-text">{t('detail.ai.empty')}</div>
   }
 
   return (
     <div className="ai-text">
       <ul>
         <li>
-          <b>MVP 建议：</b>
+          <b>{t('detail.ai.mvpSuggestion')}</b>
           {idea.aiAnalysis.mvpSuggestion}
         </li>
         <li>
-          <b>风险警示：</b>
+          <b>{t('detail.ai.risks')}</b>
           {idea.aiAnalysis.risks.join('；')}
         </li>
         <li>
-          <b>前 30 分钟：</b>
+          <b>{t('detail.ai.firstActions')}</b>
           {idea.aiAnalysis.firstActions.join(' / ')}
         </li>
       </ul>

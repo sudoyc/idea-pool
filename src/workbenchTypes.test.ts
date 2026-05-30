@@ -4,13 +4,13 @@ import { statusLabels, statusOrder } from './workbenchTypes'
 import { useIdeaStore } from './store/useIdeaStore'
 
 describe('workbench model', () => {
-  it('keeps the three kanban statuses explicit', () => {
+  it('keeps the idea lifecycle statuses explicit without making them permanent workspace columns', () => {
     expect(statusOrder).toEqual(['INBOX', 'PIPELINE', 'TRASH'])
-    expect(statusLabels.PIPELINE).toBe('AI Enriched')
+    expect(statusLabels.PIPELINE).toBe('进行中')
   })
 
-  it('ships with an AI-enriched seed idea', () => {
-    expect(initialWorkbenchIdeas.some((idea) => idea.aiEnriched && idea.aiAnalysis)).toBe(true)
+  it('ships with seed copy that matches the single-pool workspace', () => {
+    expect(JSON.stringify(initialWorkbenchIdeas)).not.toMatch(/三栏|AI Enriched/i)
   })
 
   it('keeps detail open when switching filters', () => {
@@ -21,7 +21,7 @@ describe('workbench model', () => {
       detailOpen: false,
       activeFilter: 'PIPELINE',
       screen: 'WORKBENCH',
-      statusMessage: '',
+      statusMessage: null,
     })
 
     useIdeaStore.getState().openDetail(firstIdea.id)
@@ -40,7 +40,7 @@ describe('workbench model', () => {
       detailOpen: true,
       activeFilter: 'PIPELINE',
       screen: 'WORKBENCH',
-      statusMessage: '',
+      statusMessage: null,
     })
 
     useIdeaStore.getState().setScreen('SETTINGS')

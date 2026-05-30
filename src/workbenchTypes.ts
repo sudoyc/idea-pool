@@ -1,5 +1,7 @@
 export type IdeaStatus = 'INBOX' | 'PIPELINE' | 'TRASH'
 
+export type IdeaPoolLens = 'ALL' | IdeaStatus
+
 export type WorkspaceScreen = 'WORKBENCH' | 'SETTINGS'
 
 export type IdeaSource = 'local' | 'agent' | 'import' | 'llm'
@@ -38,9 +40,9 @@ export type IdeaPatch = Partial<
 >
 
 export const statusLabels: Record<IdeaStatus, string> = {
-  INBOX: 'Local Seeds',
-  PIPELINE: 'AI Enriched',
-  TRASH: 'Trash',
+  INBOX: '待整理',
+  PIPELINE: '进行中',
+  TRASH: '已归档',
 }
 
 export const statusOrder: IdeaStatus[] = ['INBOX', 'PIPELINE', 'TRASH']
