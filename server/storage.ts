@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, dirname, resolve } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, relative, resolve } from 'node:path'
 
 const dataDir = () => resolve(process.env.IDEA_POOL_DATA_DIR ?? './data')
 
@@ -34,4 +34,24 @@ export const readStoredFile = (storageKey: string) => readFileSync(assertStorage
 
 export const deleteStoredFile = (storageKey: string) => {
   rmSync(assertStoragePath(storageKey), { force: true })
+}
+
+const collectStorageKeys = (directory: string, root: string, keys: string[]) => {
+  if (!existsSync(directory)) return
+  for (const entry of readdirSync(directory)) {
+    const fullPath = resolve(directory, entry)
+    const stats = statSync(fullPath)
+    if (stats.isDirectory()) {
+      collectStorageKeys(fullPath, root, keys)
+      continue
+    }
+    keys.push(relative(root, fullPath))
+  }
+}
+
+export const listStoredFileKeys = () => {
+  const root = filesDir()
+  const keys: string[] = []
+  collectStorageKeys(root, root, keys)
+  return keys.sort()
 }

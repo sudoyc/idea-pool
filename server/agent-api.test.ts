@@ -85,11 +85,11 @@ describe('agent API v1', () => {
 
       const eventResponse = await harness.agentRequest(`/api/agent/v1/ideas/${created.idea.id}/events`, {
         method: 'POST',
-        body: JSON.stringify({ type: 'agent_read', payload: { reason: 'prepare-pack' } }),
+        body: JSON.stringify({ type: 'idea_updated', payload: { reason: 'prepare-pack' } }),
       })
       expect(eventResponse.status).toBe(201)
       const eventPayload = (await eventResponse.json()) as { event: { type: string; actor: string; payload: { reason: string } } }
-      expect(eventPayload.event).toMatchObject({ type: 'agent_read', actor: 'agent', payload: { reason: 'prepare-pack' } })
+      expect(eventPayload.event).toMatchObject({ type: 'idea_updated', actor: 'agent', payload: { reason: 'prepare-pack' } })
 
       const completeResponse = await harness.agentRequest(`/api/agent/v1/ideas/${created.idea.id}/complete`, { method: 'POST' })
       expect(completeResponse.status).toBe(200)

@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import express from 'express'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { RequestHandler } from 'express'
@@ -15,7 +16,7 @@ import {
   listIdeaEvents,
   listIdeas,
   listAiCompletions,
-  patchIdea,
+  patchIdeaWithEvent,
   recordAiCompletion,
   recordIdeaEvent,
   setSetting,
@@ -73,25 +74,52 @@ const buildIdea = (body: Partial<IdeaRecord>, source: IdeaSource) => {
 }
 
 const completeAndPersistIdea = async (idea: IdeaRecord, notes?: string) => {
-  const aiAnalysis = await completeIdea(idea, notes)
-  const updated = patchIdea(idea.id, { aiAnalysis, aiEnriched: true, status: 'PIPELINE' }) ?? { ...idea, aiAnalysis, aiEnriched: true }
-
-  recordAiCompletion({
-    ideaId: idea.id,
-    provider: process.env.LLM_API_KEY ? 'remote' : 'local',
-    model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback'),
-    input: { idea, notes: notes ?? '' },
-    output: aiAnalysis,
-    status: 'succeeded',
-  })
+  const promptHash = createHash('sha256').update(JSON.stringify({ ideaId: idea.id, version: idea.version ?? 1, notes: notes ?? '' })).digest('hex')
   recordIdeaEvent({
     ideaId: idea.id,
-    type: 'completed_by_llm',
+    type: 'ai_completion_requested',
     actor: 'llm',
-    payload: { status: 'succeeded' },
+    payload: { model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback'), promptHash, ideaVersion: idea.version ?? 1 },
   })
 
-  return { idea: updated, aiAnalysis }
+  try {
+    const aiAnalysis = await completeIdea(idea, notes)
+    const updated = patchIdeaWithEvent(idea.id, { aiAnalysis, aiEnriched: true, status: 'PIPELINE' }, { actor: 'llm' }) ?? { ...idea, aiAnalysis, aiEnriched: true }
+
+    recordAiCompletion({
+      ideaId: idea.id,
+      provider: process.env.LLM_API_KEY ? 'remote' : 'local',
+      model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback'),
+      promptHash,
+      ideaVersion: idea.version ?? 1,
+      input: { ideaId: idea.id, ideaVersion: idea.version ?? 1, notes: notes ?? '' },
+      output: aiAnalysis,
+      status: 'succeeded',
+    })
+    recordIdeaEvent({ ideaId: idea.id, type: 'ai_completion_succeeded', actor: 'llm', payload: { status: 'succeeded', model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback') } })
+
+    return { idea: updated, aiAnalysis }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown AI completion failure'
+    recordAiCompletion({
+      ideaId: idea.id,
+      provider: process.env.LLM_API_KEY ? 'remote' : 'local',
+      model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback'),
+      promptHash,
+      ideaVersion: idea.version ?? 1,
+      input: { ideaId: idea.id, ideaVersion: idea.version ?? 1, notes: notes ?? '' },
+      output: { error: message },
+      status: 'failed',
+      error: message,
+    })
+    recordIdeaEvent({
+      ideaId: idea.id,
+      type: 'ai_completion_failed',
+      actor: 'llm',
+      payload: { status: 'failed', error: message, model: process.env.LLM_MODEL ?? (process.env.LLM_API_KEY ? 'gpt-4o-mini' : 'fallback') },
+    })
+    throw error
+  }
 }
 
 const buildAgentPackMarkdown = (idea: IdeaRecord, aiAnalysis?: AiAnalysis) => {
@@ -226,6 +254,7 @@ const createContentFileHandler: RequestHandler = (request, response) => {
     storageKey,
     sha256: stored.sha256,
   })
+  recordIdeaEvent({ ideaId: idea.id, type: 'file_uploaded', actor: 'user', payload: { fileId: file.id, filename: body.filename, storageKey } })
   response.status(201).json({ file })
 }
 
@@ -254,6 +283,9 @@ const deleteFileHandler: RequestHandler = (request, response) => {
 
   deleteStoredFile(file.storageKey)
   deleteFileMetadata(file.id)
+  if (file.ideaId) {
+    recordIdeaEvent({ ideaId: file.ideaId, type: 'file_deleted', actor: 'user', payload: { fileId: file.id, filename: file.filename, storageKey: file.storageKey } })
+  }
   response.json({ ok: true })
 }
 
@@ -329,17 +361,16 @@ export const createApp = () => {
       response.status(500).json({ error: 'Idea could not be saved' })
       return
     }
-    recordIdeaEvent({ ideaId: idea.id, type: 'created', actor: 'agent', payload: { endpoint: '/api/agent/v1/ideas' } })
+    recordIdeaEvent({ ideaId: idea.id, type: 'idea_created', actor: 'agent', payload: { endpoint: '/api/agent/v1/ideas' } })
     response.status(201).json({ idea })
   })
 
   agentRouter.patch('/ideas/:id', (request, response) => {
-    const idea = patchIdea(request.params.id, request.body as Partial<IdeaRecord>)
+    const idea = patchIdeaWithEvent(request.params.id, request.body as Partial<IdeaRecord>, { actor: 'agent' })
     if (!idea) {
       response.status(404).json({ error: 'Idea not found' })
       return
     }
-    recordIdeaEvent({ ideaId: idea.id, type: 'updated', actor: 'agent', payload: request.body })
     response.json({ idea })
   })
 
@@ -372,8 +403,12 @@ export const createApp = () => {
       return
     }
 
-    const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
-    response.json(result)
+    try {
+      const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
+      response.json(result)
+    } catch (error) {
+      response.status(502).json({ error: error instanceof Error ? error.message : 'AI completion failed' })
+    }
   })
 
   agentRouter.post('/ideas/:id/agent-pack', (request, response) => {
@@ -395,7 +430,7 @@ export const createApp = () => {
       storageKey,
       sha256: stored.sha256,
     })
-    recordIdeaEvent({ ideaId: idea.id, type: 'agent_pack_generated', actor: 'agent', payload: { fileId: file.id, storageKey } })
+    recordIdeaEvent({ ideaId: idea.id, type: 'agent_pack_created', actor: 'agent', payload: { fileId: file.id, storageKey } })
     response.status(201).json({ file })
   })
 
@@ -464,7 +499,7 @@ export const createApp = () => {
   })
 
   app.patch('/api/ideas/:id', (request, response) => {
-    const idea = patchIdea(request.params.id, request.body as Partial<IdeaRecord>)
+    const idea = patchIdeaWithEvent(request.params.id, request.body as Partial<IdeaRecord>, { actor: 'user' })
     if (!idea) {
       response.status(404).json({ error: 'Idea not found' })
       return
@@ -484,8 +519,12 @@ export const createApp = () => {
       return
     }
 
-    const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
-    response.json(result)
+    try {
+      const result = await completeAndPersistIdea(idea, (request.body as { notes?: string } | undefined)?.notes)
+      response.json(result)
+    } catch (error) {
+      response.status(502).json({ error: error instanceof Error ? error.message : 'AI completion failed' })
+    }
   })
 
   app.post('/api/ideas/:id/files/content', createContentFileHandler)

@@ -50,13 +50,13 @@ describe('workbench database spine', () => {
 
     const event = repository.recordIdeaEvent({
       ideaId: idea.id,
-      type: 'agent_read',
+      type: 'idea_updated',
       actor: 'agent',
       payload: { endpoint: '/api/agent/v1/ideas/idea-db-test' },
     })
     expect(event.id).toMatch(/^event-/)
     expect(repository.listIdeaEvents(idea.id)).toMatchObject([
-      { ideaId: idea.id, type: 'agent_read', actor: 'agent', payload: { endpoint: '/api/agent/v1/ideas/idea-db-test' } },
+      { ideaId: idea.id, type: 'idea_updated', actor: 'agent', payload: { endpoint: '/api/agent/v1/ideas/idea-db-test' } },
     ])
 
     const completion = repository.recordAiCompletion({

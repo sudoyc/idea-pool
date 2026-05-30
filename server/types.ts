@@ -2,6 +2,36 @@ export type IdeaStatus = 'INBOX' | 'PIPELINE' | 'TRASH'
 
 export type IdeaSource = 'local' | 'agent' | 'import' | 'llm'
 
+export const ideaEventTypes = [
+  'idea_created',
+  'idea_updated',
+  'idea_status_changed',
+  'idea_archived',
+  'idea_deleted',
+  'file_uploaded',
+  'file_deleted',
+  'ai_completion_requested',
+  'ai_completion_succeeded',
+  'ai_completion_failed',
+  'agent_pack_created',
+] as const
+
+export type IdeaEventType = (typeof ideaEventTypes)[number]
+
+export type SchemaMetadata = {
+  appSchemaVersion: number
+  settingsSchemaVersion: number
+  product: 'Personal Idea Workbench'
+  migratedAt: string
+}
+
+export type FileConsistencyReport = {
+  checkedAt: string
+  ok: boolean
+  missingDiskFiles: FileRecord[]
+  untrackedStorageKeys: string[]
+}
+
 export type AiAnalysis = {
   mvpSuggestion: string
   risks: string[]
@@ -22,6 +52,7 @@ export type IdeaRecord = {
   scratchpad: string
   aiEnriched: boolean
   aiAnalysis?: AiAnalysis
+  version?: number
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -31,7 +62,7 @@ export type IdeaRecord = {
 export type IdeaEventRecord = {
   id: string
   ideaId: string
-  type: string
+  type: IdeaEventType
   actor: 'user' | 'agent' | 'system' | 'llm' | string
   payload?: unknown
   createdAt: string
@@ -43,6 +74,7 @@ export type AiCompletionRecord = {
   provider?: string | null
   model?: string | null
   promptHash?: string | null
+  ideaVersion: number
   input: unknown
   output: unknown
   status: 'succeeded' | 'failed' | string

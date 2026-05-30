@@ -23,6 +23,18 @@ const parseJsonObject = (text: string): AiAnalysis | null => {
   }
 }
 
+const readRemoteError = async (response: Response) => {
+  const text = await response.text()
+  try {
+    const parsed = JSON.parse(text) as { error?: string | { message?: string } }
+    if (typeof parsed.error === 'string') return parsed.error
+    if (parsed.error && typeof parsed.error === 'object' && typeof parsed.error.message === 'string') return parsed.error.message
+  } catch {
+    // ignore JSON parse failure and fall through to text
+  }
+  return text || `LLM request failed with status ${response.status}`
+}
+
 export const completeIdea = async (idea: IdeaRecord, notes = ''): Promise<AiAnalysis> => {
   const apiKey = process.env.LLM_API_KEY
   const baseUrl = process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1'
@@ -53,9 +65,15 @@ export const completeIdea = async (idea: IdeaRecord, notes = ''): Promise<AiAnal
     }),
   })
 
-  if (!response.ok) return fallbackAnalysis(idea)
+  if (!response.ok) {
+    throw new Error(await readRemoteError(response))
+  }
 
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
   const content = payload.choices?.[0]?.message?.content ?? ''
-  return parseJsonObject(content) ?? fallbackAnalysis(idea)
+  const parsed = parseJsonObject(content)
+  if (!parsed) {
+    throw new Error('LLM response did not contain a valid AI analysis JSON payload')
+  }
+  return parsed
 }
