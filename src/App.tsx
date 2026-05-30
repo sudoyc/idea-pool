@@ -14,6 +14,8 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -60,6 +62,7 @@ const lensIcons: Record<IdeaPoolLens, typeof Inbox> = {
 
 const classificationTargetId = (status: IdeaStatus) => `classification:${status}`
 const dateTimeLocaleByUiLocale: Record<Locale, string> = { zh: 'zh-CN', en: 'en-US' }
+const localeLabelKeys: Record<Locale, TranslationKey> = { zh: 'locale.zh', en: 'locale.en' }
 
 function App() {
   const { locale, setLocale, t } = useI18n()
@@ -93,6 +96,7 @@ function App() {
   const tags = Array.from(new Set(ideas.flatMap((idea) => idea.tags))).slice(0, 8)
   const visibleIdeas = getVisibleIdeasForLens(ideas, activeLens)
   const activeLensModel = ideaPoolLenses.find((lens) => lens.id === activeLens) ?? ideaPoolLenses[0]
+  const ideaPoolAnimationKey = activeLens
 
   const loadRemoteIdeas = useCallback(async () => {
     try {
@@ -333,7 +337,14 @@ function App() {
               sensors={sensors}
             >
               <div className="workspace-layout">
-                <IdeaPool ideas={visibleIdeas} lens={activeLensModel} totalCount={ideas.length} workspacePoolModelCopy={workspacePoolModelCopy} />
+                <IdeaPool
+                  animationKey={ideaPoolAnimationKey}
+                  ideas={visibleIdeas}
+                  lens={activeLensModel}
+                  onCreateSeed={createIdea}
+                  totalCount={ideas.length}
+                  workspacePoolModelCopy={workspacePoolModelCopy}
+                />
               </div>
               <DragClassificationTargets isDragging={Boolean(activeDragId)} />
               {createPortal(
@@ -354,26 +365,63 @@ function App() {
 
 function LocaleSwitcher({ locale, setLocale }: { locale: Locale; setLocale: (locale: Locale) => void }) {
   const { t } = useI18n()
+  const [localeMenuOpen, setLocaleMenuOpen] = useState(false)
+  const localeOptions: Locale[] = ['zh', 'en']
+
+  const handleLocaleMenuKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setLocaleMenuOpen(true)
+    }
+  }
 
   return (
-    <label className="settings-label locale-switcher">
-      {t('locale.switcher.label')}
-      <select className="settings-input" onChange={(event) => setLocale(event.target.value as Locale)} value={locale}>
-        <option value="zh">{t('locale.zh')}</option>
-        <option value="en">{t('locale.en')}</option>
-      </select>
-    </label>
+    <div className="settings-label locale-switcher">
+      <span>{t('locale.switcher.label')}</span>
+      <DropdownMenu.Root open={localeMenuOpen} onOpenChange={setLocaleMenuOpen}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            aria-expanded={localeMenuOpen}
+            aria-label={t('locale.switcher.open')}
+            className="settings-input locale-trigger"
+            onKeyDown={handleLocaleMenuKeyDown}
+            type="button"
+          >
+            {t(localeLabelKeys[locale])}
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content align="end" className="locale-menu" role="listbox" sideOffset={8}>
+            {localeOptions.map((option) => (
+              <DropdownMenu.Item
+                aria-selected={locale === option}
+                className="locale-menu-item"
+                key={option}
+                onSelect={() => setLocale(option)}
+                role="option"
+              >
+                {t(localeLabelKeys[option])}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
   )
 }
 
 function IdeaPool({
+  animationKey,
   ideas,
   lens,
+  onCreateSeed,
   totalCount,
   workspacePoolModelCopy,
 }: {
+  animationKey: string
   ideas: WorkbenchIdea[]
   lens: ReturnType<typeof buildIdeaPoolLenses>[number]
+  onCreateSeed: () => void
   totalCount: number
   workspacePoolModelCopy: ReturnType<typeof buildWorkspacePoolModelCopy>
 }) {
@@ -395,11 +443,21 @@ function IdeaPool({
         </div>
       </div>
       <SortableContext items={ideas.map((idea) => idea.id)} strategy={rectSortingStrategy}>
-        <div className="idea-pool">
-          {ideas.map((idea) => (
-            <SortableIdeaCard idea={idea} key={idea.id} />
+        <div className="idea-pool" key={animationKey}>
+          {ideas.map((idea, index) => (
+            <SortableIdeaCard idea={idea} key={idea.id} staggerIndex={index} />
           ))}
-          {ideas.length === 0 && <div className="empty-pool">{t('workbench.pool.empty')}</div>}
+          {ideas.length === 0 && (
+            <div className="empty-state">
+              <div className="empty-state-kicker">{lens.label}</div>
+              <h2>{t('workbench.empty.title')}</h2>
+              <p>{t('workbench.empty.body')}</p>
+              <button className="btn primary" type="button" onClick={onCreateSeed}>
+                <Plus className="icon" />
+                {t('workbench.empty.action')}
+              </button>
+            </div>
+          )}
         </div>
       </SortableContext>
     </section>
@@ -435,13 +493,17 @@ function DragClassificationTarget({ target }: { target: ReturnType<typeof buildD
   )
 }
 
-function SortableIdeaCard({ idea }: { idea: WorkbenchIdea }) {
+function SortableIdeaCard({ idea, staggerIndex }: { idea: WorkbenchIdea; staggerIndex: number }) {
   const openDetail = useIdeaStore((state) => state.openDetail)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: idea.id })
-  const style = { transform: CSS.Transform.toString(transform), transition }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={{ '--stagger-index': staggerIndex, transform: CSS.Transform.toString(transform), transition } as React.CSSProperties}
+      {...attributes}
+      {...listeners}
+    >
       <IdeaCard dragging={isDragging} idea={idea} onOpen={() => openDetail(idea.id)} />
     </div>
   )
@@ -627,6 +689,7 @@ function FileHandoffPanel({ ideaId }: { ideaId: string }) {
   const [files, setFiles] = useState<IdeaFile[]>([])
   const [content, setContent] = useState('')
   const [filename, setFilename] = useState('agent-handoff.md')
+  const filenameInputRef = useRef<HTMLInputElement | null>(null)
   const [messageKey, setMessageKey] = useState<TranslationKey | null>(null)
 
   const loadFiles = useCallback(async () => {
@@ -648,10 +711,15 @@ function FileHandoffPanel({ ideaId }: { ideaId: string }) {
 
   const upload = async () => {
     if (!content.trim()) return
+    const trimmedFilename = (filenameInputRef.current?.value ?? filename).trim()
+    if (!trimmedFilename) {
+      setMessageKey('detail.files.filenameRequired')
+      return
+    }
     const response = await fetch(`/api/ideas/${ideaId}/files/content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, kind: 'markdown', mimeType: 'text/markdown', content }),
+      body: JSON.stringify({ filename: trimmedFilename, kind: 'markdown', mimeType: 'text/markdown', content }),
     })
     if (!response.ok) {
       setMessageKey('detail.files.uploadFailed')
@@ -675,7 +743,14 @@ function FileHandoffPanel({ ideaId }: { ideaId: string }) {
   return (
     <div className="file-panel">
       <div className="section-title">{t('detail.files.title')}</div>
-      <input className="settings-input" onChange={(event) => setFilename(event.target.value)} type="text" value={filename} />
+      <input
+        className="settings-input"
+        onChange={(event) => setFilename(event.target.value)}
+        onInput={(event) => setFilename(event.currentTarget.value)}
+        ref={filenameInputRef}
+        type="text"
+        value={filename}
+      />
       <textarea
         className="editor-box editor-box--compact editor-box--mono"
         onChange={(event) => setContent(event.target.value)}
@@ -751,7 +826,8 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
   }
 
   return (
-    <section className="settings-view">
+    <section className="settings-view settings-view-shell">
+      <div className="settings-orbit" aria-hidden="true" />
       <div className="settings-grid">
         {settingsSections.map((section) => (
           <section className={`settings-card ${section.id === 'general' ? 'settings-card--hero' : ''}`} key={section.id}>
