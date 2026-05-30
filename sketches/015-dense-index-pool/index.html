@@ -1,0 +1,356 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>015 Dense Index Pool</title><style>
+:root {
+  color-scheme: dark;
+  --bg: #030305;
+  --side: #070709;
+  --surface: #111114;
+  --surface-2: #151519;
+  --surface-hover: #1a1a1f;
+  --line: rgba(255,255,255,.065);
+  --line-strong: rgba(192,132,252,.33);
+  --text: #f4f4f5;
+  --body: #a1a1aa;
+  --dim: #52525b;
+  --accent: #c084fc;
+  --accent-soft: rgba(192,132,252,.10);
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #fb7185;
+  --sans: Inter, "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body {
+  background: radial-gradient(circle at 50% 0%, rgb(20,15,30) 0%, var(--bg) 78%);
+  color: var(--body);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; }
+.app { display: flex; height: 100vh; overflow: hidden; }
+.sidebar {
+  width: 250px; flex: 0 0 250px; display: flex; flex-direction: column;
+  border-right: 1px solid var(--line); background: rgba(7,7,9,.72); backdrop-filter: blur(20px);
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 24px 20px 20px; color: var(--text); font: 700 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 12px 2px rgba(192,132,252,.5); }
+.nav-section { padding: 12px; }
+.nav-section.lenses { margin: 0 10px 10px; padding: 12px; border: 1px solid rgba(192,132,252,.18); border-radius: 16px; background: rgba(17,17,20,.44); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); }
+.nav-section.tags { margin-top: 10px; }
+.nav-section.system { margin-top: auto; padding-bottom: 18px; }
+.nav-title { padding: 0 4px 10px; color: var(--dim); font: 700 10px/1 var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+.nav-item, .tag-item { width: 100%; border: 0; background: transparent; color: var(--body); cursor: pointer; text-align: left; }
+.nav-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; padding: 8px 10px; border-radius: 9px; font-size: 13px; font-weight: 550; transition: .2s; }
+.nav-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nav-item:hover, .tag-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item.active { background: rgba(255,255,255,.065); color: var(--text); font-weight: 700; }
+.nav-item.active .nav-left { color: var(--accent); }
+.tag-item { display: flex; gap: 8px; padding: 6px 12px; border-radius: 6px; color: var(--dim); font-size: 13px; transition: .2s; }
+.workspace-wrapper { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.workspace-inner { display: flex; flex-direction: column; height: 100%; transition: transform .5s cubic-bezier(.16,1,.3,1), opacity .5s ease; }
+.workspace-inner.shrink { transform: scale(.965) translateY(9px); opacity: .42; pointer-events: none; }
+.topbar { height: 64px; flex: 0 0 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-bottom: 1px solid var(--line); background: rgba(3,3,5,.62); backdrop-filter: blur(12px); }
+.view-title { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 15px; font-weight: 650; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chip, .sync-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; background: rgba(17,17,20,.78); color: var(--body); font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.chip { padding: 6px 9px; }
+.sync-chip { padding: 7px 10px; color: var(--green); border-color: rgba(52,211,153,.28); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-hover); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 650; transition: .2s cubic-bezier(.16,1,.3,1); }
+.btn:hover { transform: translateY(-1px); background: #27272a; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
+.btn.primary { border-color: var(--line-strong); background: var(--accent-soft); color: var(--accent); }
+.workspace-layout { height: calc(100vh - 64px); min-height: 0; padding: 20px 20px 22px; overflow: hidden; }
+.pool-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.pool-kicker { margin-bottom: 8px; color: var(--accent); font: 800 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.pool-title { margin: 0; color: var(--text); font-size: 24px; line-height: 1.05; letter-spacing: -.035em; }
+.pool-subtitle { margin: 8px 0 0; color: var(--dim); font-size: 12px; line-height: 1.5; max-width: 640px; }
+.pool-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.search { width: 220px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: none; background: rgba(17,17,20,.78); color: var(--text); font-size: 12px; }
+.search:focus { border-color: var(--line-strong); box-shadow: 0 0 0 3px rgba(192,132,252,.08); }
+.idea-pool { min-height: 0; overflow-y: auto; padding: 2px 4px 80px 2px; }
+.idea-card { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgba(17,17,20,.64); cursor: grab; user-select: none; transition: transform .24s cubic-bezier(.16,1,.3,1), border-color .2s, background .2s, box-shadow .2s, opacity .2s; }
+.idea-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: transparent; transition: .2s; }
+.idea-card:hover, .idea-card.active { transform: translateY(-2px); border-color: rgba(255,255,255,.16); background: var(--surface); box-shadow: 0 15px 28px -14px rgba(0,0,0,.9); }
+.idea-card:hover::before, .idea-card.active::before { background: var(--accent); }
+.idea-card.drag-source { opacity: .42; }
+.idea-card[hidden] { display: none !important; }
+.idea-card h3 { margin: 0 0 9px; color: var(--text); font-size: 14px; line-height: 1.35; font-weight: 680; }
+.idea-card p { margin: 0 0 13px; color: var(--body); font-size: 12px; line-height: 1.55; }
+.card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dim); font: 700 10px/1 var(--mono); text-transform: uppercase; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 7px; background: rgba(255,255,255,.03); color: var(--body); white-space: nowrap; }
+.status-pill[data-value="active"] { color: var(--accent); border-color: rgba(192,132,252,.24); }
+.status-pill[data-value="parked"] { color: var(--amber); border-color: rgba(251,191,36,.24); }
+.status-pill[data-value="pool"] { color: var(--dim); }
+.drag-targets { position: fixed; z-index: 40; top: 92px; right: 20px; width: 300px; display: grid; gap: 14px; pointer-events: none; opacity: 0; transform: translateX(112%); transition: opacity .22s, transform .32s cubic-bezier(.16,1,.3,1); }
+body.dragging-card .drag-targets { pointer-events: auto; opacity: 1; transform: translateX(0); }
+.drop-window { min-height: 172px; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; border: 1px solid var(--line-strong); border-radius: 20px; background: rgba(13,13,17,.94); box-shadow: 0 22px 60px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.04); transition: transform .18s, border-color .18s, background .18s; }
+.drop-window:hover, .drop-window.over { transform: translateX(-8px) scale(1.015); border-color: rgba(192,132,252,.62); background: rgba(20,17,26,.97); }
+.drop-window .label { color: var(--accent); font: 800 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.drop-window h3 { margin: 12px 0 0; color: var(--text); font-size: 20px; letter-spacing: -.025em; }
+.drop-window p { margin: 10px 0 0; color: var(--body); font-size: 12px; line-height: 1.55; }
+.drop-window .hint { margin-top: 18px; color: var(--dim); font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.drop-window.parked { border-color: rgba(251,191,36,.22); }
+.drop-window.parked .label { color: var(--amber); }
+.toast { position: fixed; z-index: 60; right: 24px; bottom: 22px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(17,17,20,.96); color: var(--text); font: 650 12px/1 var(--sans); opacity: 0; transform: translateY(12px); transition: .24s; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.detail-view { position: fixed; z-index: 35; top: 0; right: 0; width: min(720px, calc(100vw - 250px)); height: 100vh; border-left: 1px solid var(--line-strong); background: rgba(6,6,9,.96); box-shadow: -36px 0 90px rgba(0,0,0,.68); transform: translateX(104%); transition: transform .44s cubic-bezier(.16,1,.3,1); }
+.detail-view.open { transform: translateX(0); }
+.detail-topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--line); background: rgba(17,17,20,.72); }
+.detail-content { height: calc(100vh - 64px); overflow: auto; padding: 28px; }
+.detail-doc { max-width: 650px; }
+.detail-tags { display: flex; gap: 8px; margin-bottom: 18px; }
+.detail-doc h1 { margin: 0 0 16px; color: var(--text); font-size: 31px; letter-spacing: -.035em; line-height: 1.08; }
+.detail-doc p { margin: 0 0 18px; color: var(--body); font-size: 14px; line-height: 1.75; }
+.detail-section { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(17,17,20,.56); }
+.detail-section h3 { margin: 0 0 10px; color: var(--text); font-size: 13px; }
+.detail-section ul { margin: 0; padding-left: 18px; color: var(--body); font-size: 13px; line-height: 1.75; }
+@media (max-width: 1080px) {
+  .sidebar { width: 220px; flex-basis: 220px; }
+  .topbar { padding: 0 20px; }
+  .workspace-layout { padding: 16px; }
+  .drag-targets { width: 260px; right: 14px; }
+  .detail-view { width: calc(100vw - 220px); }
+}
+
+/* 015 B: Dense Index Pool */
+.workspace-layout { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.pool-header { margin-bottom: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.idea-pool { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+.idea-card { min-height: 132px; padding: 14px 15px; }
+.idea-card h3 { margin-bottom: 7px; font-size: 13px; }
+.idea-card p { margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.idea-card:nth-child(4n+1) { grid-column: span 2; min-height: 144px; }
+.idea-card:nth-child(4n+1) h3 { font-size: 16px; }
+body.compact-density .idea-pool { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body.compact-density .idea-card:nth-child(4n+1) { grid-column: span 1; }
+body.roomy-density .idea-pool { grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 14px; }
+@media (max-width: 1150px) { .idea-pool, body.compact-density .idea-pool { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+</style></head><body><main class="app">
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>Workbench</div>
+  <div class="nav-section lenses">
+    <div class="nav-title">Main view</div>
+    <button class="nav-item active" data-lens="all"><span class="nav-left">⌘ Everything</span><span data-count="all">12</span></button>
+    <button class="nav-item" data-lens="pool"><span class="nav-left">○ Raw pool</span><span data-count="pool">7</span></button>
+    <button class="nav-item" data-lens="active"><span class="nav-left">◇ In motion</span><span data-count="active">3</span></button>
+    <button class="nav-item" data-lens="parked"><span class="nav-left">↺ Parked</span><span data-count="parked">2</span></button>
+  </div>
+  <div class="nav-section tags">
+    <div class="nav-title">Adjust view</div>
+    <button class="tag-item" data-sort="new">recent first</button>
+    <button class="tag-item" data-sort="tag">group by tag</button>
+    <button class="tag-item" data-density="compact">compact density</button>
+    <button class="tag-item" data-density="roomy">roomy density</button>
+  </div>
+  <div class="nav-section system">
+    <div class="nav-title">System</div>
+    <button class="nav-item"><span class="nav-left">⚙ Settings</span></button>
+    <button class="nav-item"><span class="nav-left">● Agent API</span></button>
+  </div>
+</aside>
+<section class="workspace-wrapper"><div class="workspace-inner">
+<header class="topbar">
+  <div class="view-title"><span class="dot"></span><span>Personal Idea Workbench</span></div>
+  <div class="topbar-actions">
+    <span class="chip">lens: <b id="lensLabel">all ideas</b></span>
+    <button class="sync-chip">synced</button>
+    <button class="btn primary">＋ New Seed</button>
+  </div>
+</header>
+<div class="workspace-layout"><div class="pool-header"><div><div class="pool-kicker">dense idea index</div><h1 class="pool-title">Scan many ideas without status lanes</h1><p class="pool-subtitle">This version treats the workbench like a dense personal index. The left framed controls decide what appears; the right drag targets only appear during classification.</p></div><div class="pool-tools"><button class="btn">⌘K Command</button><input class="search" placeholder="Filter current lens" /></div></div><section class="idea-pool"><article class="idea-card " draggable="true" data-id="i1" data-title="Browser agent handoff format" data-summary="Turn one selected idea into compact context, files, constraints, and next action for a remote coding agent." data-status="pool" data-tag="agent" data-score="ready">
+  <h3>Browser agent handoff format</h3>
+  <p>Turn one selected idea into compact context, files, constraints, and next action for a remote coding agent.</p>
+  <div class="card-meta"><span class="pill">#agent</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i2" data-title="Local capture inbox" data-summary="Fast keyboard capture with title, first action, source, and low-friction tagging for raw thoughts." data-status="pool" data-tag="capture" data-score="raw">
+  <h3>Local capture inbox</h3>
+  <p>Fast keyboard capture with title, first action, source, and low-friction tagging for raw thoughts.</p>
+  <div class="card-meta"><span class="pill">#capture</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i3" data-title="Private VPS deployment notes" data-summary="A minimal personal server path: compose file, auth secrets, data directory, backup, and reverse proxy." data-status="active" data-tag="vps" data-score="next">
+  <h3>Private VPS deployment notes</h3>
+  <p>A minimal personal server path: compose file, auth secrets, data directory, backup, and reverse proxy.</p>
+  <div class="card-meta"><span class="pill">#vps</span><span class="pill status-pill" data-status-pill data-value="active">active</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i4" data-title="Settings schema controls" data-summary="Move settings UI from hardcoded cards toward server-owned schema-driven controls." data-status="active" data-tag="settings" data-score="design">
+  <h3>Settings schema controls</h3>
+  <p>Move settings UI from hardcoded cards toward server-owned schema-driven controls.</p>
+  <div class="card-meta"><span class="pill">#settings</span><span class="pill status-pill" data-status-pill data-value="active">active</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i5" data-title="File storage metadata" data-summary="Extend text handoff files toward multipart upload, preview, MIME typing, and content-addressed cleanup." data-status="active" data-tag="files" data-score="next">
+  <h3>File storage metadata</h3>
+  <p>Extend text handoff files toward multipart upload, preview, MIME typing, and content-addressed cleanup.</p>
+  <div class="card-meta"><span class="pill">#files</span><span class="pill status-pill" data-status-pill data-value="active">active</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i6" data-title="LLM fallback behavior" data-summary="Keep enrichment useful when no external model key exists, without pretending it is real AI output." data-status="pool" data-tag="ai" data-score="raw">
+  <h3>LLM fallback behavior</h3>
+  <p>Keep enrichment useful when no external model key exists, without pretending it is real AI output.</p>
+  <div class="card-meta"><span class="pill">#ai</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i7" data-title="Spatial detail animation" data-summary="Detail should feel like focusing into the selected idea, while the idea pool remains the home base." data-status="active" data-tag="ui" data-score="refine">
+  <h3>Spatial detail animation</h3>
+  <p>Detail should feel like focusing into the selected idea, while the idea pool remains the home base.</p>
+  <div class="card-meta"><span class="pill">#ui</span><span class="pill status-pill" data-status-pill data-value="active">active</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i8" data-title="Index 5 migration cleanup" data-summary="Keep old prototypes as references, but do not let prototype structure dictate the product layout." data-status="parked" data-tag="cleanup" data-score="later">
+  <h3>Index 5 migration cleanup</h3>
+  <p>Keep old prototypes as references, but do not let prototype structure dictate the product layout.</p>
+  <div class="card-meta"><span class="pill">#cleanup</span><span class="pill status-pill" data-status-pill data-value="parked">parked</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i9" data-title="Agent endpoint examples" data-summary="Document versioned API calls, curl examples, auth failure states, and generated agent pack shape." data-status="parked" data-tag="docs" data-score="later">
+  <h3>Agent endpoint examples</h3>
+  <p>Document versioned API calls, curl examples, auth failure states, and generated agent pack shape.</p>
+  <div class="card-meta"><span class="pill">#docs</span><span class="pill status-pill" data-status-pill data-value="parked">parked</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i10" data-title="Offline sync conflict copy" data-summary="Clarify what happens when local-first edits wait, fail, retry, or overwrite a stale remote copy." data-status="pool" data-tag="sync" data-score="raw">
+  <h3>Offline sync conflict copy</h3>
+  <p>Clarify what happens when local-first edits wait, fail, retry, or overwrite a stale remote copy.</p>
+  <div class="card-meta"><span class="pill">#sync</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i11" data-title="Idea event timeline" data-summary="Store enough change history to make remote agent actions auditable without becoming a SaaS activity feed." data-status="pool" data-tag="history" data-score="raw">
+  <h3>Idea event timeline</h3>
+  <p>Store enough change history to make remote agent actions auditable without becoming a SaaS activity feed.</p>
+  <div class="card-meta"><span class="pill">#history</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article>
+<article class="idea-card " draggable="true" data-id="i12" data-title="Single-user token rotation" data-summary="Keep personal deployment simple while making agent token rotation explicit and recoverable." data-status="pool" data-tag="auth" data-score="raw">
+  <h3>Single-user token rotation</h3>
+  <p>Keep personal deployment simple while making agent token rotation explicit and recoverable.</p>
+  <div class="card-meta"><span class="pill">#auth</span><span class="pill status-pill" data-status-pill data-value="pool">pool</span></div>
+</article></section></div></div>
+<section class="detail-view" id="detail">
+  <div class="detail-topbar"><button class="btn" id="closeDetail">‹ Back</button><div class="topbar-actions"><button class="btn">Discard</button><button class="btn primary">Save Changes</button></div></div>
+  <div class="detail-content">
+    <article class="detail-doc">
+      <div class="detail-tags"><span class="pill" id="detailStatus">pool</span><span class="pill">selected idea</span></div>
+      <h1 id="detailTitle">Selected idea</h1>
+      <p id="detailSummary">Click a card to open this focused detail layer. Drag a card to the right edge to classify it without turning the main pool into status columns.</p>
+      <section class="detail-section"><div class="nav-title">AI augmentation</div><h3>Only complete the selected idea</h3><ul><li>Summarize missing context.</li><li>Draft next action and constraints.</li><li>Generate agent handoff files when ready.</li></ul></section>
+    </article>
+  </div>
+</section>
+</section>
+<div class="drag-targets" id="dragTargets">
+  <section class="drop-window active" data-drop-status="active">
+    <div><div class="label">Classify as</div><h3>Active work</h3><p>Use for ideas that deserve current attention, enrichment, or agent handoff.</p></div>
+    <div class="hint">drop here</div>
+  </section>
+  <section class="drop-window parked" data-drop-status="parked">
+    <div><div class="label">Classify as</div><h3>Parked / archive</h3><p>Use for ideas that should leave the active pool without being deleted.</p></div>
+    <div class="hint">drop here</div>
+  </section>
+</div>
+<div class="toast" id="toast">Updated idea status</div>
+</main>
+<script>
+const cards = Array.from(document.querySelectorAll('.idea-card'));
+const lenses = Array.from(document.querySelectorAll('[data-lens]'));
+const lensLabel = document.getElementById('lensLabel');
+const detail = document.getElementById('detail');
+const title = document.getElementById('detailTitle');
+const summary = document.getElementById('detailSummary');
+const detailStatus = document.getElementById('detailStatus');
+const inner = document.querySelector('.workspace-inner');
+const toast = document.getElementById('toast');
+let activeLens = 'all';
+let draggingCard = null;
+let clickGuard = false;
+
+function refreshCounts() {
+  const counts = { all: cards.length, pool: 0, active: 0, parked: 0 };
+  cards.forEach(card => counts[card.dataset.status] += 1);
+  Object.entries(counts).forEach(([key, value]) => {
+    const node = document.querySelector(`[data-count="${key}"]`);
+    if (node) node.textContent = value;
+  });
+}
+function applyLens(lens) {
+  activeLens = lens;
+  lenses.forEach(btn => btn.classList.toggle('active', btn.dataset.lens === lens));
+  cards.forEach(card => {
+    const show = lens === 'all' || card.dataset.status === lens;
+    card.hidden = !show;
+  });
+  const active = lenses.find(btn => btn.dataset.lens === lens);
+  lensLabel.textContent = active ? active.innerText.replace(/\s+\d+$/, '').trim() : lens;
+}
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1200);
+}
+function openDetail(card) {
+  cards.forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  title.textContent = card.dataset.title;
+  summary.textContent = card.dataset.summary;
+  detailStatus.textContent = card.dataset.status;
+  detailStatus.dataset.value = card.dataset.status;
+  detail.classList.add('open');
+  inner.classList.add('shrink');
+}
+
+lenses.forEach(btn => btn.addEventListener('click', () => applyLens(btn.dataset.lens)));
+
+document.querySelectorAll('[data-density]').forEach(btn => btn.addEventListener('click', () => {
+  document.body.classList.toggle('compact-density', btn.dataset.density === 'compact');
+  document.body.classList.toggle('roomy-density', btn.dataset.density === 'roomy');
+}));
+
+document.querySelectorAll('[data-sort]').forEach(btn => btn.addEventListener('click', () => {
+  const pool = document.querySelector('.idea-pool');
+  const sorted = [...cards].sort((a,b) => btn.dataset.sort === 'tag' ? a.dataset.tag.localeCompare(b.dataset.tag) : a.dataset.id.localeCompare(b.dataset.id));
+  sorted.forEach(card => pool.appendChild(card));
+  showToast(btn.dataset.sort === 'tag' ? 'Grouped by tag' : 'Recent order restored');
+}));
+
+cards.forEach(card => {
+  card.addEventListener('click', () => {
+    if (clickGuard) return;
+    openDetail(card);
+  });
+  card.addEventListener('dragstart', event => {
+    draggingCard = card;
+    clickGuard = true;
+    card.classList.add('drag-source');
+    document.body.classList.add('dragging-card');
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', card.dataset.id);
+    }
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('drag-source');
+    document.body.classList.remove('dragging-card');
+    document.querySelectorAll('.drop-window').forEach(target => target.classList.remove('over'));
+    setTimeout(() => { clickGuard = false; draggingCard = null; }, 60);
+  });
+});
+
+document.querySelectorAll('[data-drop-status]').forEach(target => {
+  target.addEventListener('dragover', event => { event.preventDefault(); target.classList.add('over'); });
+  target.addEventListener('dragleave', () => target.classList.remove('over'));
+  target.addEventListener('drop', event => {
+    event.preventDefault();
+    if (!draggingCard) return;
+    const next = target.dataset.dropStatus;
+    draggingCard.dataset.status = next;
+    const pill = draggingCard.querySelector('[data-status-pill]');
+    pill.textContent = next === 'active' ? 'active' : 'parked';
+    pill.dataset.value = next;
+    refreshCounts();
+    applyLens(activeLens);
+    showToast(`${draggingCard.dataset.title} → ${next === 'active' ? 'Active work' : 'Parked'}`);
+  });
+});
+
+document.getElementById('closeDetail').addEventListener('click', () => {
+  detail.classList.remove('open');
+  inner.classList.remove('shrink');
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') { detail.classList.remove('open'); inner.classList.remove('shrink'); }
+});
+refreshCounts();
+applyLens('all');
+</script>
+</body></html>

@@ -1,0 +1,171 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>014 Context Strip Kanban</title><style>
+:root {
+  color-scheme: dark;
+  --bg: #030305;
+  --side: #070709;
+  --surface: #111114;
+  --surface-hover: #1a1a1f;
+  --line: rgba(255,255,255,.06);
+  --line-strong: rgba(192,132,252,.32);
+  --text: #f4f4f5;
+  --body: #a1a1aa;
+  --dim: #52525b;
+  --accent: #c084fc;
+  --accent-soft: rgba(192,132,252,.10);
+  --green: #34d399;
+  --amber: #fbbf24;
+  --sans: Inter, "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body {
+  background: radial-gradient(circle at 50% 0%, rgb(20,15,30) 0%, var(--bg) 78%);
+  color: var(--body);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; }
+.app { display: flex; height: 100vh; overflow: hidden; }
+.sidebar {
+  width: 250px; flex: 0 0 250px; display: flex; flex-direction: column;
+  border-right: 1px solid var(--line); background: rgba(7,7,9,.72); backdrop-filter: blur(20px);
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 24px 20px 20px; color: var(--text); font: 700 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 12px 2px rgba(192,132,252,.5); }
+.nav-section { padding: 12px; }
+.nav-section.tags { margin-top: 16px; }
+.nav-section.system { margin-top: auto; padding-bottom: 18px; }
+.nav-title { padding: 0 12px 10px; color: var(--dim); font: 600 10px/1 var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+.nav-item, .tag-item { width: 100%; border: 0; background: transparent; color: var(--body); cursor: pointer; text-align: left; }
+.nav-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; transition: .2s; }
+.nav-left { display: flex; align-items: center; gap: 8px; }
+.nav-item:hover, .tag-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item.active { background: rgba(255,255,255,.06); color: var(--text); font-weight: 650; }
+.tag-item { display: flex; gap: 8px; padding: 6px 12px; border-radius: 6px; color: var(--dim); font-size: 13px; transition: .2s; }
+.workspace-wrapper { flex: 1; min-width: 0; overflow: hidden; }
+.workspace-inner { display: flex; flex-direction: column; height: 100%; transition: transform .5s cubic-bezier(.16,1,.3,1), opacity .5s ease; }
+.workspace-inner.shrink { transform: scale(.965) translateY(9px); opacity: .42; pointer-events: none; }
+.topbar { height: 64px; flex: 0 0 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-bottom: 1px solid var(--line); background: rgba(3,3,5,.62); backdrop-filter: blur(12px); }
+.view-title { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 15px; font-weight: 650; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.chip, .sync-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; background: rgba(17,17,20,.78); color: var(--body); font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.chip { padding: 6px 9px; }
+.sync-chip { padding: 7px 10px; color: var(--green); border-color: rgba(52,211,153,.28); }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-hover); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 650; transition: .2s cubic-bezier(.16,1,.3,1); }
+.btn:hover { transform: translateY(-1px); background: #27272a; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
+.btn.primary { border-color: var(--line-strong); background: var(--accent-soft); color: var(--accent); }
+.workspace-layout { height: calc(100vh - 64px); min-height: 0; padding: 20px 20px 22px; }
+.section-title { color: var(--dim); font: 700 10px/1 var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+.board { height: 100%; min-height: 0; display: grid; align-items: stretch; gap: 18px; }
+.column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 18px; background: rgba(10,10,12,.54); transition: grid-column .28s cubic-bezier(.16,1,.3,1), opacity .2s, border-color .2s, background .2s; }
+.col-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 16px 16px 13px; border-bottom: 1px solid var(--line); }
+.col-title { display: block; color: var(--text); font: 700 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.col-description { display: block; margin-top: 7px; color: var(--dim); font-size: 11px; line-height: 1.45; }
+.count { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--body); font: 700 10px/1 var(--mono); padding: 4px 6px; }
+.column-body { min-height: 0; overflow-y: auto; padding: 14px; }
+.card { position: relative; margin-bottom: 12px; padding: 16px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: rgba(17,17,20,.64); cursor: pointer; user-select: none; transition: .25s cubic-bezier(.16,1,.3,1); }
+.card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: transparent; transition: .25s; }
+.card:hover, .card.active { transform: translateY(-2px); border-color: rgba(255,255,255,.15); background: var(--surface); box-shadow: 0 12px 24px -10px rgba(0,0,0,.86); }
+.card:hover::before, .card.active::before { background: var(--accent); }
+.card h3 { margin: 0 0 9px; color: var(--text); font-size: 14px; font-weight: 650; line-height: 1.35; }
+.card p { margin: 0 0 12px; color: var(--body); font-size: 12px; line-height: 1.55; }
+.card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dim); font: 700 10px/1 var(--mono); text-transform: uppercase; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 7px; background: rgba(255,255,255,.03); color: var(--body); }
+.detail-view { position: fixed; z-index: 30; top: 0; right: 0; width: min(740px, calc(100vw - 250px)); height: 100vh; border-left: 1px solid var(--line-strong); background: rgba(6,6,9,.96); box-shadow: -36px 0 90px rgba(0,0,0,.68); transform: translateX(104%); transition: transform .44s cubic-bezier(.16,1,.3,1); }
+.detail-view.open { transform: translateX(0); }
+.detail-topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--line); background: rgba(17,17,20,.72); }
+.detail-content { height: calc(100vh - 64px); overflow: auto; padding: 28px; }
+.detail-doc { max-width: 650px; }
+.detail-tags { display: flex; gap: 8px; margin-bottom: 18px; }
+.detail-doc h1 { margin: 0 0 16px; color: var(--text); font-size: 31px; letter-spacing: -.035em; line-height: 1.08; }
+.detail-doc p { margin: 0 0 18px; color: var(--body); font-size: 14px; line-height: 1.75; }
+.detail-section { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(17,17,20,.56); }
+.detail-section h3 { margin: 0 0 10px; color: var(--text); font-size: 13px; }
+.detail-section ul { margin: 0; padding-left: 18px; color: var(--body); font-size: 13px; line-height: 1.75; }
+@media (max-width: 980px) {
+  .sidebar { width: 210px; flex-basis: 210px; }
+  .topbar { padding: 0 20px; }
+  .workspace-layout { padding: 14px; }
+  .detail-view { width: calc(100vw - 210px); }
+}
+
+/* Variant 3: board plus compact context strip — inspector rail content becomes a thin workspace header. */
+.workspace-layout { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; }
+.context-strip { display: grid; grid-template-columns: 1.15fr .9fr 1fr auto; align-items: stretch; gap: 10px; min-height: 72px; }
+.context-cell { border: 1px solid var(--line); border-radius: 14px; background: rgba(17,17,20,.56); padding: 13px 14px; min-width: 0; }
+.context-cell h3 { margin: 7px 0 0; color: var(--text); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.context-cell p { margin: 7px 0 0; color: var(--dim); font-size: 11px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.context-cell.action { display: flex; align-items: center; justify-content: center; min-width: 144px; }
+.board { grid-template-columns: repeat(3, minmax(220px, 1fr)); min-height: 0; }
+.card { padding: 15px; }
+@media (max-width: 1160px) { .context-strip { grid-template-columns: 1fr 1fr; } .context-cell.action { justify-content: flex-start; } }
+</style></head><body><main class="app">
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>Workbench</div>
+  <div class="nav-section">
+    <div class="nav-title">Views</div>
+    <button class="nav-item active" data-focus="inbox"><span class="nav-left">▦ Inbox</span><span>4</span></button>
+    <button class="nav-item" data-focus="developing"><span class="nav-left">◇ Developing</span><span>3</span></button>
+    <button class="nav-item" data-focus="archived"><span class="nav-left">↺ Archived</span><span>2</span></button>
+  </div>
+  <div class="nav-section tags">
+    <div class="nav-title">Tags</div>
+    <button class="tag-item"># agent-handoff</button>
+    <button class="tag-item"># local-first</button>
+    <button class="tag-item"># vps</button>
+    <button class="tag-item"># settings</button>
+  </div>
+  <div class="nav-section system">
+    <div class="nav-title">System</div>
+    <button class="nav-item"><span class="nav-left">⚙ Settings</span></button>
+    <button class="nav-item"><span class="nav-left">● Agent API</span></button>
+  </div>
+</aside>
+<section class="workspace-wrapper"><div class="workspace-inner">
+<header class="topbar">
+  <div class="view-title"><span class="dot"></span><span>Personal Idea Workbench</span></div>
+  <div class="topbar-actions">
+    <button class="sync-chip">synced</button>
+    <button class="btn primary">＋ New Seed</button>
+  </div>
+</header>
+<div class="workspace-layout"><div class="context-strip"><section class="context-cell"><div class="section-title">Sync status</div><h3>Remote copy current</h3><p>Local edits are durable before network sync.</p></section><section class="context-cell"><div class="section-title">Focus filter</div><h3>Inbox · Developing · Archived</h3><p>Sidebar changes what the board emphasizes, not the product flow.</p></section><section class="context-cell"><div class="section-title">Current selection</div><h3 id="selectedLabel">No idea selected</h3><p>Selection opens the focused detail layer.</p></section><section class="context-cell action"><button class="btn primary">Generate agent pack</button></section></div><div class="board"><section class="column" data-column="inbox"><div class="col-header"><div><span class="col-title">Inbox</span><span class="col-description">Raw seeds and unresolved inputs.</span></div><span class="count">4</span></div><div class="column-body"><article class="card" data-title="Browser agent handoff format" data-summary="Define a compact agent pack that turns a selected idea into context, files, and next action."><h3>Browser agent handoff format</h3><p>Define a compact agent pack that turns a selected idea into context, files, and next action.</p><div class="card-meta"><span class="pill">#agent</span><span>ai ready</span></div></article><article class="card" data-title="Local capture inbox" data-summary="Fast keyboard capture with status, tag, and first-action defaults."><h3>Local capture inbox</h3><p>Fast keyboard capture with status, tag, and first-action defaults.</p><div class="card-meta"><span class="pill">#workbench</span><span>local</span></div></article><article class="card" data-title="Private VPS deployment notes" data-summary="Document the minimal compose, data directory, auth, and backup story."><h3>Private VPS deployment notes</h3><p>Document the minimal compose, data directory, auth, and backup story.</p><div class="card-meta"><span class="pill">#workbench</span><span>local</span></div></article><article class="card" data-title="LLM fallback behavior" data-summary="Keep the workbench useful when no external model key exists."><h3>LLM fallback behavior</h3><p>Keep the workbench useful when no external model key exists.</p><div class="card-meta"><span class="pill">#workbench</span><span>local</span></div></article></div></section><section class="column" data-column="developing"><div class="col-header"><div><span class="col-title">Developing</span><span class="col-description">Ideas with a concrete next action.</span></div><span class="count">3</span></div><div class="column-body"><article class="card" data-title="Spatial detail animation" data-summary="Detail should feel like zooming into the selected idea, not opening a SaaS modal."><h3>Spatial detail animation</h3><p>Detail should feel like zooming into the selected idea, not opening a SaaS modal.</p><div class="card-meta"><span class="pill">#workbench</span><span>ai ready</span></div></article><article class="card" data-title="Settings schema controls" data-summary="Server-owned settings definitions that can drive the UI without hardcoded cards."><h3>Settings schema controls</h3><p>Server-owned settings definitions that can drive the UI without hardcoded cards.</p><div class="card-meta"><span class="pill">#workbench</span><span>local</span></div></article><article class="card" data-title="File storage metadata" data-summary="Text handoff files now work; next step is multipart and preview handling."><h3>File storage metadata</h3><p>Text handoff files now work; next step is multipart and preview handling.</p><div class="card-meta"><span class="pill">#workbench</span><span>local</span></div></article></div></section><section class="column" data-column="archived"><div class="col-header"><div><span class="col-title">Archived</span><span class="col-description">Dormant, shipped, or intentionally parked.</span></div><span class="count">2</span></div><div class="column-body"><article class="card" data-title="Index 5 migration cleanup" data-summary="Old prototype content is preserved as reference, but not treated as product UI."><h3>Index 5 migration cleanup</h3><p>Old prototype content is preserved as reference, but not treated as product UI.</p><div class="card-meta"><span class="pill">#workbench</span><span>ai ready</span></div></article><article class="card" data-title="Agent endpoint docs" data-summary="Versioned API examples, curl commands, and failure states for remote agents."><h3>Agent endpoint docs</h3><p>Versioned API examples, curl commands, and failure states for remote agents.</p><div class="card-meta"><span class="pill">#agent</span><span>local</span></div></article></div></section></div></div></div>
+<section class="detail-view" id="detail">
+  <div class="detail-topbar"><button class="btn" id="closeDetail">‹ Back</button><div class="topbar-actions"><button class="btn">Discard</button><button class="btn primary">Save Changes</button></div></div>
+  <div class="detail-content">
+    <article class="detail-doc">
+      <div class="detail-tags"><span class="pill"># selected idea</span><span class="pill">agent-ready</span></div>
+      <h1 id="detailTitle">Selected idea</h1>
+      <p id="detailSummary">Click a card to open the focused detail layer. This keeps the original product model: board for scanning, detail for working.</p>
+      <section class="detail-section"><div class="section-title">AI augmentation</div><h3>Only complete the selected idea</h3><ul><li>Summarize missing context.</li><li>Draft next actions and constraints.</li><li>Generate agent handoff files when ready.</li></ul></section>
+      <section class="detail-section"><div class="section-title">Files</div><h3>Handoff package</h3><p>File metadata, storage status, and download actions live inside detail instead of a separate filler rail.</p></section>
+    </article>
+  </div>
+</section>
+</section></main>
+<script>
+const cards = Array.from(document.querySelectorAll('.card'));
+const detail = document.getElementById('detail');
+const title = document.getElementById('detailTitle');
+const summary = document.getElementById('detailSummary');
+const selectedLabel = document.getElementById('selectedLabel');
+const inner = document.querySelector('.workspace-inner');
+cards.forEach(card => card.addEventListener('click', () => {
+  cards.forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  title.textContent = card.dataset.title;
+  summary.textContent = card.dataset.summary;
+  selectedLabel.textContent = card.dataset.title.split(' ').slice(0, 3).join(' ');
+  detail.classList.add('open');
+  inner.classList.add('shrink');
+}));
+document.getElementById('closeDetail').addEventListener('click', () => {
+  detail.classList.remove('open');
+  inner.classList.remove('shrink');
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') { detail.classList.remove('open'); inner.classList.remove('shrink'); }
+});
+</script>
+</body></html>
