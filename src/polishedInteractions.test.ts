@@ -30,7 +30,7 @@ describe('polished interaction source contracts', () => {
 
   it('gives settings a distinct animated reveal rather than a hard view swap', () => {
     expect(appSource).toContain('settings-view-shell')
-    expect(appSource).toContain('settings-orbit')
+    expect(appSource).toContain('settings-container')
   })
 
   it('covers edge states for empty lenses and guarded file uploads', () => {

@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { agentEndpointSummary, settingsSections, workspaceModelTagline } from './workbenchProductModel'
+import { agentEndpointSummary, settingsReadOnlyItems, workspaceModelTagline } from './workbenchProductModel'
+import modelSource from './workbenchProductModel.ts?raw'
 
 describe('workbench product model', () => {
   it('keeps the core mental model explicit for UI and docs', () => {
     expect(workspaceModelTagline).toBe('Local-first Kanban + Spatial Detail View + AI Augmentation')
   })
 
-  it('defines real settings sections instead of placeholder cards', () => {
-    expect(settingsSections.map((section) => section.id)).toEqual(['general', 'ai', 'agent', 'storage', 'security'])
-    expect(settingsSections.every((section) => section.summary.length > 24)).toBe(true)
-    expect(settingsSections.find((section) => section.id === 'agent')?.facts).toContain('/api/agent/v1/context')
-    expect(settingsSections.find((section) => section.id === 'storage')?.facts).toContain('SQLite + data/files')
+  it('defines real settings read-only items instead of legacy placeholder cards', () => {
+    expect(settingsReadOnlyItems.map((item) => item.id)).toEqual(['mentalModel', 'aiBoundary', 'storage', 'security', 'agentRoutes'])
+    expect(settingsReadOnlyItems.every((item) => item.description.length > 24)).toBe(true)
+    expect(settingsReadOnlyItems.find((item) => item.id === 'agentRoutes')?.tags).toContain('/api/agent/v1/context')
+    expect(settingsReadOnlyItems.find((item) => item.id === 'storage')?.tags).toContain('SQLite')
+    expect(modelSource).not.toContain('buildSettingsSections')
   })
 
   it('summarizes the versioned agent surface for Settings and Inspector', () => {

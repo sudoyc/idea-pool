@@ -22,8 +22,9 @@ describe('polished interaction CSS contracts', () => {
     expect(cssSource).toContain('white-space: nowrap')
   })
 
-  it('defines a distinct settings reveal and orbit scan animation', () => {
+  it('defines a distinct settings reveal and form-flow surface', () => {
     expect(cssSource).toContain('@keyframes settings-reveal')
-    expect(cssSource).toContain('@keyframes settings-orbit-scan')
+    expect(cssSource).toContain('.settings-container')
+    expect(cssSource).toContain('.settings-form-flow')
   })
 })

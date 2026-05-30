@@ -3,11 +3,11 @@ import { t } from './i18n/messages'
 import type { Locale } from './i18n/types'
 import type { IdeaPoolLens, IdeaStatus } from './workbenchTypes'
 
-export type SettingsSection = {
-  id: 'general' | 'ai' | 'agent' | 'storage' | 'security'
-  title: string
-  summary: string
-  facts: string[]
+export type SettingsReadOnlyItem = {
+  id: 'mentalModel' | 'aiBoundary' | 'storage' | 'security' | 'agentRoutes'
+  label: string
+  description: string
+  tags: string[]
 }
 
 export type IdeaPoolLensModel = {
@@ -25,6 +25,7 @@ export type DragClassificationTarget = {
 export type SettingsControl = {
   key: 'workspaceName' | 'llmModel' | 'agentExposure'
   label: string
+  description: string
   storageKey: string
   input: 'text' | 'select'
   options?: string[]
@@ -73,18 +74,21 @@ export const buildSettingsControls = (locale: Locale): SettingsControl[] => [
   {
     key: 'workspaceName',
     label: t(locale, 'settings.control.workspaceName.label'),
+    description: t(locale, 'settings.control.workspaceName.description'),
     storageKey: 'settings.workspaceName',
     input: 'text',
   },
   {
     key: 'llmModel',
     label: t(locale, 'settings.control.llmModel.label'),
+    description: t(locale, 'settings.control.llmModel.description'),
     storageKey: 'settings.llmModel',
     input: 'text',
   },
   {
     key: 'agentExposure',
     label: t(locale, 'settings.control.agentExposure.label'),
+    description: t(locale, 'settings.control.agentExposure.description'),
     storageKey: 'settings.agentExposure',
     input: 'select',
     options: ['private', 'private-vps', 'local-only'],
@@ -92,6 +96,41 @@ export const buildSettingsControls = (locale: Locale): SettingsControl[] => [
 ]
 
 export const settingsControls: SettingsControl[] = buildSettingsControls(defaultLocale)
+
+export const buildSettingsReadOnlyItems = (locale: Locale): SettingsReadOnlyItem[] => [
+  {
+    id: 'mentalModel',
+    label: t(locale, 'settings.readonly.mentalModel.label'),
+    description: t(locale, 'settings.readonly.mentalModel.description'),
+    tags: [workspaceModelTagline],
+  },
+  {
+    id: 'aiBoundary',
+    label: t(locale, 'settings.readonly.aiBoundary.label'),
+    description: t(locale, 'settings.readonly.aiBoundary.description'),
+    tags: [t(locale, 'settings.readonly.aiBoundary.tags.selectedIdea')],
+  },
+  {
+    id: 'storage',
+    label: t(locale, 'settings.readonly.storage.label'),
+    description: t(locale, 'settings.readonly.storage.description'),
+    tags: [t(locale, 'settings.readonly.storage.tags.sqlite'), t(locale, 'settings.readonly.storage.tags.files')],
+  },
+  {
+    id: 'security',
+    label: t(locale, 'settings.readonly.security.label'),
+    description: t(locale, 'settings.readonly.security.description'),
+    tags: [t(locale, 'settings.readonly.security.tags.web'), t(locale, 'settings.readonly.security.tags.agent')],
+  },
+  {
+    id: 'agentRoutes',
+    label: t(locale, 'settings.readonly.agentRoutes.label'),
+    description: t(locale, 'settings.readonly.agentRoutes.description'),
+    tags: ['/api/agent/v1/context', '/api/agent/v1/ideas/:id/files'],
+  },
+]
+
+export const settingsReadOnlyItems: SettingsReadOnlyItem[] = buildSettingsReadOnlyItems(defaultLocale)
 
 export const filePanelActions: FilePanelAction[] = [
   {
@@ -123,38 +162,3 @@ export const buildSyncStatusCopy = (locale: Locale) => ({
 })
 
 export const syncStatusCopy = buildSyncStatusCopy(defaultLocale)
-
-export const buildSettingsSections = (locale: Locale): SettingsSection[] => [
-  {
-    id: 'general',
-    title: t(locale, 'settings.section.general.title'),
-    summary: t(locale, 'settings.section.general.summary'),
-    facts: [workspaceModelTagline, t(locale, 'settings.section.general.fact.status')],
-  },
-  {
-    id: 'ai',
-    title: t(locale, 'settings.section.ai.title'),
-    summary: t(locale, 'settings.section.ai.summary'),
-    facts: [t(locale, 'settings.section.ai.fact.selected'), t(locale, 'settings.section.ai.fact.human')],
-  },
-  {
-    id: 'agent',
-    title: t(locale, 'settings.section.agent.title'),
-    summary: t(locale, 'settings.section.agent.summary'),
-    facts: ['/api/agent/v1/context', '/api/agent/v1/schema', '/api/agent/v1/ideas'],
-  },
-  {
-    id: 'storage',
-    title: t(locale, 'settings.section.storage.title'),
-    summary: t(locale, 'settings.section.storage.summary'),
-    facts: [t(locale, 'settings.section.storage.fact.sqlite'), t(locale, 'settings.section.storage.fact.remote')],
-  },
-  {
-    id: 'security',
-    title: t(locale, 'settings.section.security.title'),
-    summary: t(locale, 'settings.section.security.summary'),
-    facts: [t(locale, 'settings.section.security.fact.session'), t(locale, 'settings.section.security.fact.token')],
-  },
-]
-
-export const settingsSections: SettingsSection[] = buildSettingsSections(defaultLocale)

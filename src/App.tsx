@@ -35,22 +35,20 @@ import './App.css'
 import { useI18n } from './i18n/useI18n'
 import type { TranslationKey } from './i18n/messages'
 import type { Locale } from './i18n/types'
+import { defaultWorkbenchSettings, loadWorkbenchSettings, saveWorkbenchSettings, type WorkbenchSettings } from './settingsClient'
 import { getVisibleIdeasForLens, useIdeaStore } from './store/useIdeaStore'
 import {
-  agentEndpointSummary,
   buildDragClassificationTargets,
   buildIdeaPoolLenses,
   buildSettingsControls,
-  buildSettingsSections,
+  buildSettingsReadOnlyItems,
   buildSyncStatusCopy,
   buildWorkspacePoolModelCopy,
-  type SettingsControl,
 } from './workbenchProductModel'
 import { statusOrder, type IdeaPoolLens, type IdeaStatus, type WorkbenchIdea } from './workbenchTypes'
 
 type AuthState = 'checking' | 'authenticated' | 'anonymous'
 type AuthMode = 'disabled' | 'password' | 'token'
-type WorkbenchSettings = Record<SettingsControl['key'], string>
 type IdeaFile = { id: string; filename: string; kind: string; sizeBytes?: number }
 
 const lensIcons: Record<IdeaPoolLens, typeof Inbox> = {
@@ -800,25 +798,17 @@ function FileHandoffPanel({ ideaId }: { ideaId: string }) {
 
 function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolean; authMode: AuthMode; onLogout: () => void }) {
   const { locale, t } = useI18n()
-  const settingsSections = useMemo(() => buildSettingsSections(locale), [locale])
   const settingsControls = useMemo(() => buildSettingsControls(locale), [locale])
-  const securitySection = settingsSections.find((section) => section.id === 'security')
-  const [settings, setSettings] = useState<WorkbenchSettings>({
-    workspaceName: 'Personal Idea Workbench',
-    llmModel: 'local-fallback',
-    agentExposure: 'private',
-  })
+  const settingsReadOnlyItems = useMemo(() => buildSettingsReadOnlyItems(locale), [locale])
+  const [settings, setSettings] = useState<WorkbenchSettings>(defaultWorkbenchSettings)
   const [saving, setSaving] = useState(false)
   const [messageKey, setMessageKey] = useState<TranslationKey | null>(null)
 
   useEffect(() => {
     const loadSettings = async () => {
-      try {
-        const response = await fetch('/api/settings')
-        if (!response.ok) return
-        const payload = (await response.json()) as { settings?: Partial<WorkbenchSettings> }
-        setSettings((current) => ({ ...current, ...payload.settings }))
-      } catch {
+      const result = await loadWorkbenchSettings()
+      setSettings(result.settings)
+      if (result.usedDefaults) {
         setMessageKey('settings.localDefaults')
       }
     }
@@ -829,12 +819,8 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
     setSaving(true)
     setMessageKey(null)
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-      setMessageKey(response.ok ? 'settings.saved' : 'settings.saveFailed')
+      const saved = await saveWorkbenchSettings(settings)
+      setMessageKey(saved ? 'settings.saved' : 'settings.saveFailed')
     } catch {
       setMessageKey('settings.saveFailed')
     } finally {
@@ -844,62 +830,83 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
 
   return (
     <section className="settings-view settings-view-shell">
-      <div className="settings-orbit" aria-hidden="true" />
-      <div className="settings-grid">
-        {settingsSections.map((section) => (
-          <section className={`settings-card ${section.id === 'general' ? 'settings-card--hero' : ''}`} key={section.id}>
-            <div className="section-title">{section.title}</div>
-            <h2>{section.id === 'general' ? t('app.title') : section.title}</h2>
-            <p>{section.summary}</p>
-            <ul className="settings-facts">
-              {section.facts.map((fact) => (
-                <li key={fact}>{fact}</li>
-              ))}
-              {section.id === 'agent' && <li>{agentEndpointSummary.endpoints.join(' | ')}</li>}
-            </ul>
-          </section>
-        ))}
-
-        <section className="settings-card settings-card--hero">
-          <div className="section-title">{t('settings.controls.title')}</div>
-          <div className="settings-controls">
+      <div className="settings-container">
+        <section className="settings-section">
+          <div className="section-header">
+            <div>
+              <div className="section-title">{t('settings.workspaceConfig.title')}</div>
+              <p>{t('settings.workspaceConfig.summary')}</p>
+            </div>
+          </div>
+          <div className="settings-form-flow">
             {settingsControls.map((control) => (
-              <label className="settings-label" key={control.key}>
-                {control.label}
-                {control.input === 'select' ? (
-                  <select
-                    className="settings-input"
-                    onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
-                    value={settings[control.key]}
-                  >
-                    {control.options?.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="settings-input"
-                    onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
-                    type="text"
-                    value={settings[control.key]}
-                  />
-                )}
-              </label>
+              <div className="setting-item" key={control.key}>
+                <div className="setting-info">
+                  <label className="settings-label" htmlFor={`setting-${control.key}`}>
+                    {control.label}
+                  </label>
+                  <p>{control.description}</p>
+                </div>
+                <div className="setting-control">
+                  {control.input === 'select' ? (
+                    <select
+                      className="settings-input"
+                      id={`setting-${control.key}`}
+                      onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
+                      value={settings[control.key]}
+                    >
+                      {control.options?.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="settings-input"
+                      id={`setting-${control.key}`}
+                      onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
+                      type="text"
+                      value={settings[control.key]}
+                    />
+                  )}
+                </div>
+              </div>
             ))}
           </div>
-          <button className="btn primary settings-action" disabled={saving} type="button" onClick={saveSettings}>
-            {saving ? t('action.saving') : t('action.saveSettings')}
-          </button>
+          <div className="settings-actions">
+            <button className="btn primary" disabled={saving} type="button" onClick={saveSettings}>
+              {saving ? t('action.saving') : t('action.saveSettings')}
+            </button>
+          </div>
           {messageKey && <p className="settings-message">{t(messageKey)}</p>}
         </section>
 
-        <section className="settings-card settings-card--session">
-          <div className="section-title">{t('settings.session.title')}</div>
-          <p>
-            <Lock className="icon settings-inline-icon" /> {t('settings.session.currentMode')}: {authEnabled ? authMode : t('settings.session.mode.disabled')}. {securitySection?.facts.join(' / ')}.
-          </p>
+        <section className="settings-section">
+          <div className="section-header">
+            <div>
+              <div className="section-title">{t('settings.systemStatus.title')}</div>
+              <p>{t('settings.systemStatus.summary')}</p>
+            </div>
+            <div className="settings-session-pill">
+              {t('settings.session.currentMode')}: {authEnabled ? authMode : t('settings.session.mode.disabled')}
+            </div>
+          </div>
+          <div className="settings-form-flow settings-form-flow--readonly">
+            {settingsReadOnlyItems.map((item) => (
+              <div className="setting-item" key={item.id}>
+                <div className="setting-info">
+                  <div className="settings-label">{item.label}</div>
+                  <p>{item.description}</p>
+                </div>
+                <div className="setting-control setting-control--tags">
+                  {item.tags.map((tag) => (
+                    <code key={tag}>{tag}</code>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
           {authEnabled && (
             <button className="btn settings-action" type="button" onClick={onLogout}>
               <LogOut className="icon" />

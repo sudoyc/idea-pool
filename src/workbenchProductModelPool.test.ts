@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dragClassificationTargets, ideaPoolLenses, settingsSections, workspacePoolModelCopy } from './workbenchProductModel'
+import { dragClassificationTargets, ideaPoolLenses, settingsReadOnlyItems, workspacePoolModelCopy } from './workbenchProductModel'
 
 describe('single-pool workspace product model', () => {
   it('defines sidebar lenses that adjust the idea pool instead of permanent board columns', () => {
@@ -21,7 +21,7 @@ describe('single-pool workspace product model', () => {
   })
 
   it('does not describe the workspace as a three-column status board in settings copy', () => {
-    const serializedCopy = JSON.stringify({ workspacePoolModelCopy, settingsSections })
+    const serializedCopy = JSON.stringify({ workspacePoolModelCopy, settingsReadOnlyItems })
     expect(serializedCopy).not.toMatch(/three-column|permanent columns|visible as durable work states/i)
   })
 })

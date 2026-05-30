@@ -3,7 +3,7 @@ import {
   buildDragClassificationTargets,
   buildIdeaPoolLenses,
   buildSettingsControls,
-  buildSettingsSections,
+  buildSettingsReadOnlyItems,
   buildSyncStatusCopy,
   dragClassificationTargets,
   ideaPoolLenses,
@@ -30,12 +30,12 @@ describe('localized workbench product model', () => {
     expect(en[2]?.label).toBe('Active work')
   })
 
-  it('builds drag targets, settings sections, controls, and sync labels by locale', () => {
+  it('builds drag targets, settings controls, read-only items, and sync labels by locale', () => {
     expect(buildDragClassificationTargets('zh').map((target) => target.label)).toEqual(['待整理', '进行中', '搁置 / 归档'])
     expect(buildDragClassificationTargets('en').map((target) => target.label)).toEqual(['Unsorted pool', 'Active work', 'Parked / archive'])
 
-    expect(buildSettingsSections('zh').find((section) => section.id === 'general')?.title).toBe('通用')
-    expect(buildSettingsSections('en').find((section) => section.id === 'general')?.title).toBe('General')
+    expect(buildSettingsReadOnlyItems('zh').find((item) => item.id === 'mentalModel')?.label).toBe('心智模型')
+    expect(buildSettingsReadOnlyItems('en').find((item) => item.id === 'mentalModel')?.label).toBe('Mental model')
 
     expect(buildSettingsControls('zh').find((control) => control.key === 'workspaceName')?.label).toBe('WORKSPACE 名称')
     expect(buildSettingsControls('en').find((control) => control.key === 'workspaceName')?.label).toBe('Workspace name')
@@ -54,5 +54,6 @@ describe('localized workbench product model', () => {
   it('keeps product-model visible copy behind the typed message catalog', () => {
     expect(modelSource).not.toContain("locale === 'zh'")
     expect(modelSource).not.toContain('locale === "zh"')
+    expect(modelSource).not.toContain('settings.section.general')
   })
 })
