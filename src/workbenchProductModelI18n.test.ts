@@ -31,8 +31,8 @@ describe('localized workbench product model', () => {
   })
 
   it('builds drag targets, settings sections, controls, and sync labels by locale', () => {
-    expect(buildDragClassificationTargets('zh').map((target) => target.label)).toEqual(['进行中', '搁置 / 归档'])
-    expect(buildDragClassificationTargets('en').map((target) => target.label)).toEqual(['Active work', 'Parked / archive'])
+    expect(buildDragClassificationTargets('zh').map((target) => target.label)).toEqual(['待整理', '进行中', '搁置 / 归档'])
+    expect(buildDragClassificationTargets('en').map((target) => target.label)).toEqual(['Unsorted pool', 'Active work', 'Parked / archive'])
 
     expect(buildSettingsSections('zh').find((section) => section.id === 'general')?.title).toBe('通用')
     expect(buildSettingsSections('en').find((section) => section.id === 'general')?.title).toBe('General')
@@ -46,7 +46,7 @@ describe('localized workbench product model', () => {
 
   it('defaults compatibility product-model exports to Chinese', () => {
     expect(ideaPoolLenses.map((lens) => lens.label)).toEqual(['全部灵感', '待整理', '进行中', '已归档'])
-    expect(dragClassificationTargets.map((target) => target.label)).toEqual(['进行中', '搁置 / 归档'])
+    expect(dragClassificationTargets.map((target) => target.label)).toEqual(['待整理', '进行中', '搁置 / 归档'])
     expect(settingsControls.find((control) => control.key === 'workspaceName')?.label).toBe('WORKSPACE 名称')
     expect(syncStatusCopy.idle).toBe('本地更改已保存')
   })

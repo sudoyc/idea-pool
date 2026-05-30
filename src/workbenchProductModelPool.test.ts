@@ -9,8 +9,8 @@ describe('single-pool workspace product model', () => {
   })
 
   it('defines only drag-time classification targets for idea status changes', () => {
-    expect(dragClassificationTargets.map((target) => target.status)).toEqual(['PIPELINE', 'TRASH'])
-    expect(dragClassificationTargets.map((target) => target.label)).toEqual(['进行中', '搁置 / 归档'])
+    expect(dragClassificationTargets.map((target) => target.status)).toEqual(['INBOX', 'PIPELINE', 'TRASH'])
+    expect(dragClassificationTargets.map((target) => target.label)).toEqual(['待整理', '进行中', '搁置 / 归档'])
     expect(dragClassificationTargets.every((target) => target.description.length > 10)).toBe(true)
   })
 

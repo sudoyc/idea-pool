@@ -21,7 +21,10 @@ describe('polished interaction source contracts', () => {
   })
 
   it('animates idea cards on lens changes with staggered blur lift', () => {
-    expect(appSource).toContain('ideaPoolAnimationKey')
+    expect(appSource).toContain('ideaPoolTransitionMode')
+    expect(appSource).toContain('previousLensRef')
+    expect(appSource).toContain("transitionMode={ideaPoolTransitionMode}")
+    expect(appSource).toContain('pool-transition-surface')
     expect(appSource).toContain('style={{ \'--stagger-index\'')
   })
 
@@ -37,5 +40,12 @@ describe('polished interaction source contracts', () => {
     expect(appSource).toContain('filenameInputRef.current?.value ?? filename')
     expect(appSource).toContain("setMessageKey('detail.files.filenameRequired')")
     expect(appSource).toMatch(/if \(!trimmedFilename\)/)
+  })
+
+  it('renders status messages in a fixed topbar slot and exposes permanent delete only from archived detail', () => {
+    expect(appSource).toContain('topbar-status-slot')
+    expect(appSource).toContain("t('action.deletePermanently')")
+    expect(appSource).toContain("idea.status === 'TRASH'")
+    expect(appSource).toContain('deleteSelectedIdea')
   })
 })

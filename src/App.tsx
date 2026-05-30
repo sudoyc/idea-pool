@@ -96,7 +96,8 @@ function App() {
   const tags = Array.from(new Set(ideas.flatMap((idea) => idea.tags))).slice(0, 8)
   const visibleIdeas = getVisibleIdeasForLens(ideas, activeLens)
   const activeLensModel = ideaPoolLenses.find((lens) => lens.id === activeLens) ?? ideaPoolLenses[0]
-  const ideaPoolAnimationKey = activeLens
+  const previousLensRef = useRef(activeLens)
+  const [ideaPoolTransitionMode, setIdeaPoolTransitionMode] = useState<'idle' | 'lens'>('idle')
 
   const loadRemoteIdeas = useCallback(async () => {
     try {
@@ -146,6 +147,14 @@ function App() {
       ),
     [ideas],
   )
+
+  useEffect(() => {
+    if (previousLensRef.current === activeLens) return
+    previousLensRef.current = activeLens
+    setIdeaPoolTransitionMode('lens')
+    const timer = window.setTimeout(() => setIdeaPoolTransitionMode('idle'), 520)
+    return () => window.clearTimeout(timer)
+  }, [activeLens])
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(String(event.active.id))
@@ -310,7 +319,7 @@ function App() {
             </div>
             <div className="topbar-actions">
               <LocaleSwitcher locale={locale} setLocale={setLocale} />
-              {statusMessage && <span className="status-message">{t(statusMessage)}</span>}
+              <span className="topbar-status-slot">{statusMessage ? <span className="status-message">{t(statusMessage)}</span> : null}</span>
               <button className={`sync-chip sync-chip--${sync.status}`} type="button" onClick={flushSyncQueue}>
                 {syncStatusCopy[sync.status]}
                 {sync.pendingCount > 0 ? ` (${sync.pendingCount})` : ''}
@@ -338,10 +347,10 @@ function App() {
             >
               <div className="workspace-layout">
                 <IdeaPool
-                  animationKey={ideaPoolAnimationKey}
                   ideas={visibleIdeas}
                   lens={activeLensModel}
                   onCreateSeed={createIdea}
+                  transitionMode={ideaPoolTransitionMode}
                   totalCount={ideas.length}
                   workspacePoolModelCopy={workspacePoolModelCopy}
                 />
@@ -411,17 +420,17 @@ function LocaleSwitcher({ locale, setLocale }: { locale: Locale; setLocale: (loc
 }
 
 function IdeaPool({
-  animationKey,
   ideas,
   lens,
   onCreateSeed,
+  transitionMode,
   totalCount,
   workspacePoolModelCopy,
 }: {
-  animationKey: string
   ideas: WorkbenchIdea[]
   lens: ReturnType<typeof buildIdeaPoolLenses>[number]
   onCreateSeed: () => void
+  transitionMode: 'idle' | 'lens'
   totalCount: number
   workspacePoolModelCopy: ReturnType<typeof buildWorkspacePoolModelCopy>
 }) {
@@ -443,7 +452,7 @@ function IdeaPool({
         </div>
       </div>
       <SortableContext items={ideas.map((idea) => idea.id)} strategy={rectSortingStrategy}>
-        <div className="idea-pool" key={animationKey}>
+        <div className="idea-pool pool-transition-surface" data-transition={transitionMode === 'lens' ? 'lens' : undefined}>
           {ideas.map((idea, index) => (
             <SortableIdeaCard idea={idea} key={idea.id} staggerIndex={index} />
           ))}
@@ -556,6 +565,7 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; locale: Locale; on
   const updateIdea = useIdeaStore((state) => state.updateIdea)
   const enrichIdea = useIdeaStore((state) => state.enrichIdea)
   const discardSelected = useIdeaStore((state) => state.discardSelected)
+  const deleteSelectedIdea = useIdeaStore((state) => state.deleteSelectedIdea)
   const [aiBusy, setAiBusy] = useState(false)
   const summaryRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -606,10 +616,17 @@ function DetailView({ idea, onClose }: { idea: WorkbenchIdea; locale: Locale; on
           {t('action.back')}
         </button>
         <div className="detail-actions">
-          <button className="btn" type="button" onClick={discardSelected}>
-            <Archive className="icon" />
-            {t('action.discard')}
-          </button>
+          {idea.status === 'TRASH' ? (
+            <button className="btn btn-danger" type="button" onClick={deleteSelectedIdea}>
+              <Trash2 className="icon" />
+              {t('action.deletePermanently')}
+            </button>
+          ) : (
+            <button className="btn" type="button" onClick={discardSelected}>
+              <Archive className="icon" />
+              {t('action.discard')}
+            </button>
+          )}
           <button className="btn primary" type="button" onClick={() => updateIdea(idea.id, {})}>
             <Save className="icon" />
             {t('action.saveChanges')}

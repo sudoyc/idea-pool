@@ -1,20 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Settings Console</title>
+    <title>Personal Idea Workbench Settings</title>
     <style>
       :root {
         color-scheme: dark;
         --bg: #030305;
-        --panel: rgba(17, 17, 22, 0.78);
-        --line: rgba(255, 255, 255, 0.08);
-        --purple: #c084fc;
+        --side: #070709;
+        --surface: #111114;
+        --surface-hover: #1a1a1f;
+        --line: rgba(255, 255, 255, 0.06);
+        --line-strong: rgba(192, 132, 252, 0.3);
         --text: #f4f4f5;
-        --muted: #8b8b96;
-        --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-        --sans: Inter, ui-sans-serif, system-ui, sans-serif;
+        --body: #a1a1aa;
+        --dim: #52525b;
+        --accent: #c084fc;
+        --accent-soft: rgba(192, 132, 252, 0.1);
+        --mono: "JetBrains Mono", "Fira Code", monospace;
+        --sans: "Inter", "Noto Sans SC", system-ui, sans-serif;
       }
 
       * {
@@ -22,229 +27,313 @@
       }
 
       body {
-        min-height: 100vh;
         margin: 0;
-        background:
-          radial-gradient(circle at 16% 12%, rgba(192, 132, 252, 0.16), transparent 34%),
-          radial-gradient(circle at 86% 20%, rgba(76, 29, 149, 0.2), transparent 30%),
-          var(--bg);
-        color: var(--muted);
+        background: radial-gradient(circle at 50% 0%, rgb(20, 15, 30) 0%, var(--bg) 80%);
+        color: var(--body);
         font-family: var(--sans);
       }
 
-      main {
-        display: grid;
-        grid-template-columns: 260px minmax(0, 1fr);
-        gap: 22px;
+      .app {
+        display: flex;
         min-height: 100vh;
-        padding: 28px;
+        overflow: hidden;
       }
 
-      aside,
-      .panel {
-        border: 1px solid var(--line);
-        background: var(--panel);
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.035);
-        backdrop-filter: blur(18px);
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        width: 250px;
+        border-right: 1px solid var(--line);
+        background: rgba(7, 7, 9, 0.7);
+        backdrop-filter: blur(20px);
       }
 
-      aside {
-        padding: 20px;
-        border-radius: 24px;
-      }
-
-      .brand,
-      .eyebrow,
-      label {
-        color: var(--purple);
-        font: 800 11px/1 var(--mono);
-        letter-spacing: 0.14em;
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 24px 20px 20px;
+        color: var(--text);
+        font: 700 13px/1 var(--mono);
+        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
-      .nav {
-        display: grid;
-        gap: 10px;
-        margin-top: 34px;
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 12px 2px rgba(192, 132, 252, 0.5);
       }
 
-      .nav div {
+      .nav-section {
+        margin: 0 10px 10px;
         padding: 12px;
-        border: 1px solid transparent;
-        border-radius: 12px;
-        color: #c8c8d2;
+        border: 1px solid rgba(192, 132, 252, 0.18);
+        border-radius: 16px;
+        background: rgba(17, 17, 20, 0.44);
       }
 
-      .nav .active {
-        border-color: rgba(192, 132, 252, 0.32);
-        background: rgba(192, 132, 252, 0.1);
-        color: var(--text);
+      .nav-section--system {
+        margin-top: auto;
+        margin-bottom: 18px;
       }
 
-      .console {
-        display: grid;
-        grid-template-rows: auto 1fr;
-        gap: 18px;
-      }
-
-      header.panel {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 22px 24px;
-        border-radius: 24px;
-      }
-
-      h1,
-      h2 {
-        margin: 0;
-        color: var(--text);
-        letter-spacing: -0.04em;
-      }
-
-      h1 {
-        margin-top: 10px;
-        font-size: clamp(32px, 5vw, 64px);
-      }
-
-      h2 {
-        font-size: 20px;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
-        gap: 18px;
-      }
-
-      .panel {
-        position: relative;
-        overflow: hidden;
-        padding: 22px;
-        border-radius: 22px;
-        animation: panelDrift 5s ease-in-out infinite alternate;
-      }
-
-      .panel::after {
-        position: absolute;
-        inset: auto -30% -40% 20%;
-        height: 120px;
-        background: radial-gradient(circle, rgba(192, 132, 252, 0.22), transparent 62%);
-        content: "";
-        pointer-events: none;
-      }
-
-      .stack {
-        display: grid;
-        gap: 16px;
-      }
-
-      .control {
-        display: grid;
-        gap: 8px;
-        margin-top: 18px;
-      }
-
-      .field {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 13px 14px;
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(3, 3, 5, 0.46);
-        color: var(--text);
-        font-family: var(--mono);
-        font-size: 12px;
-      }
-
-      .pill {
-        display: inline-flex;
-        padding: 7px 10px;
-        border: 1px solid rgba(192, 132, 252, 0.34);
-        border-radius: 999px;
-        background: rgba(192, 132, 252, 0.08);
-        color: var(--purple);
-        font: 800 10px/1 var(--mono);
+      .nav-title,
+      .section-title,
+      .settings-label {
+        color: var(--dim);
+        font: 700 11px/1 var(--mono);
         letter-spacing: 0.1em;
         text-transform: uppercase;
       }
 
-      p {
-        max-width: 58ch;
-        margin: 12px 0 0;
-        line-height: 1.65;
+      .nav-title {
+        padding: 0 12px 10px;
+        font-size: 10px;
+        letter-spacing: 0.15em;
       }
 
-      @keyframes panelDrift {
-        0% {
-          transform: translateY(0);
-          border-color: rgba(255, 255, 255, 0.08);
-        }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        margin-bottom: 4px;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--body);
+        font-size: 13px;
+      }
 
-        100% {
-          transform: translateY(-4px);
-          border-color: rgba(192, 132, 252, 0.24);
-        }
+      .nav-item.active {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .count {
+        padding: 3px 6px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--body);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .workspace-wrapper {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+        padding: 0 32px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(3, 3, 5, 0.6);
+        backdrop-filter: blur(12px);
+      }
+
+      .view-title,
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .view-title {
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .topbar-status-slot {
+        min-width: 160px;
+        color: var(--dim);
+        font: 600 11px/1 var(--mono);
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .btn,
+      .settings-input {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-hover);
+        color: var(--text);
+      }
+
+      .btn {
+        padding: 8px 16px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .settings-view {
+        height: calc(100vh - 64px);
+        overflow: auto;
+        padding: 22px;
+      }
+
+      .settings-view-shell {
+        position: relative;
+        background:
+          radial-gradient(circle at 18% 8%, rgba(192, 132, 252, 0.12), transparent 32%),
+          linear-gradient(180deg, rgba(17, 17, 20, 0.3), transparent 42%);
+      }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        max-width: 1080px;
+      }
+
+      .settings-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(17, 17, 20, 0.72);
+      }
+
+      .settings-card--hero,
+      .settings-card--session {
+        grid-column: 1 / -1;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        color: var(--text);
+        font-size: 18px;
+      }
+
+      p,
+      li {
+        color: var(--body);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .settings-facts {
+        margin: 12px 0 0;
+        padding-left: 18px;
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .settings-controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .settings-label {
+        display: grid;
+        gap: 8px;
+      }
+
+      .settings-input {
+        width: 100%;
+        padding: 10px 11px;
+        background: var(--surface);
+        font: 500 13px/1.4 var(--sans);
       }
 
       @media (max-width: 860px) {
-        main,
-        .grid {
+        .app,
+        .settings-controls {
+          display: block;
+        }
+
+        .sidebar {
+          width: 100%;
+        }
+
+        .settings-grid {
           grid-template-columns: 1fr;
         }
       }
     </style>
   </head>
-  <body>
-    <main>
-      <aside>
-        <div class="brand">Personal Idea Workbench</div>
-        <nav class="nav" aria-label="Settings sections">
-          <div class="active">Settings Console</div>
-          <div>Language Switch</div>
-          <div>Agent API</div>
-          <div>Gemini handoff</div>
+  <body data-mockup-source="current-app-settings">
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand"><span class="dot"></span>WORKBENCH</div>
+        <nav class="nav-section" aria-label="灵感池视角">
+          <div class="nav-title">灵感池视角</div>
+          <div class="nav-item"><span>全部灵感</span><span class="count">12</span></div>
+          <div class="nav-item"><span>待整理</span><span class="count">5</span></div>
+          <div class="nav-item"><span>进行中</span><span class="count">4</span></div>
+          <div class="nav-item"><span>已归档</span><span class="count">3</span></div>
+        </nav>
+        <nav class="nav-section nav-section--system" aria-label="系统">
+          <div class="nav-title">系统</div>
+          <div class="nav-item active"><span>设置</span></div>
         </nav>
       </aside>
-      <section class="console">
-        <header class="panel">
-          <div>
-            <div class="eyebrow">Operator surface</div>
-            <h1>Settings Console</h1>
+
+      <section class="workspace-wrapper">
+        <div class="topbar">
+          <div class="view-title">设置</div>
+          <div class="topbar-actions">
+            <span>语言：中文</span>
+            <span class="topbar-status-slot">设置已保存</span>
+            <button class="btn" type="button">本地更改已保存</button>
+            <button class="btn" type="button">返回 Workbench</button>
           </div>
-          <span class="pill">local first</span>
-        </header>
-        <div class="grid">
-          <article class="panel stack">
-            <div>
-              <div class="eyebrow">Language Switch</div>
-              <h2>Command-like locale control</h2>
-              <p>A focused dropdown concept that feels like a developer tool: compact, keyboard reachable, and separate from production form controls.</p>
-            </div>
-            <div class="control">
-              <label>Language Switch</label>
-              <div class="field">English <span>⌘K / arrows</span></div>
-            </div>
-          </article>
-          <article class="panel stack">
-            <div>
-              <div class="eyebrow">Agent API</div>
-              <h2>Private automation boundary</h2>
-              <p>Expose only intentional endpoints for schema, ideas, files, and completions while keeping browser session access separate from bearer-token agents.</p>
-            </div>
-            <div class="field">/api/v1/agent/context <span>token</span></div>
-            <div class="field">/api/v1/ideas/:id/files <span>handoff</span></div>
-          </article>
-          <article class="panel stack">
-            <div>
-              <div class="eyebrow">Gemini handoff</div>
-              <h2>File handoff lane</h2>
-              <p>Markdown bundles remain visible as workbench artifacts, ready for a Gemini handoff or any local coding agent.</p>
-            </div>
-            <div class="field">agent-handoff.md <span>ready</span></div>
-          </article>
         </div>
+
+        <section class="settings-view settings-view-shell">
+          <div class="settings-grid">
+            <section class="settings-card settings-card--hero">
+              <div class="section-title">通用</div>
+              <h2>Personal Idea Workbench</h2>
+              <p>明确保持 workbench 的心智模型：local-first 灵感采集、单池视角、空间化 detail 审阅与 AI 增强。</p>
+              <ul class="settings-facts">
+                <li>Local-first Kanban + Spatial Detail View + AI Augmentation</li>
+                <li>状态是卡片元数据；分类只在拖拽时出现</li>
+              </ul>
+            </section>
+
+            <section class="settings-card">
+              <div class="section-title">Agent API</div>
+              <h2>Agent API</h2>
+              <p>版本化的 Agent API 暴露工作台上下文、schema、idea 操作、补全、文件附件和 Agent Pack。</p>
+              <ul class="settings-facts">
+                <li>/api/agent/v1/context | /schema | /ideas | /ideas/:id/files</li>
+              </ul>
+            </section>
+
+            <section class="settings-card">
+              <div class="section-title">存储</div>
+              <h2>存储</h2>
+              <p>结构化 ideas 保存在本地 SQLite，导出产物和附件则放在应用旁边的数据文件目录。</p>
+            </section>
+
+            <section class="settings-card settings-card--hero">
+              <div class="section-title">可编辑控制项</div>
+              <div class="settings-controls">
+                <label class="settings-label">WORKSPACE 名称<input class="settings-input" value="Personal Idea Workbench" /></label>
+                <label class="settings-label">LLM 模型<input class="settings-input" value="local-fallback" /></label>
+                <label class="settings-label">Agent 暴露范围<input class="settings-input" value="private" /></label>
+              </div>
+              <button class="btn" type="button">保存设置</button>
+            </section>
+
+            <section class="settings-card settings-card--session">
+              <div class="section-title">会话</div>
+              <p>当前模式：password。Web session cookie / Agent 访问使用 Bearer token。</p>
+            </section>
+          </div>
+        </section>
       </section>
     </main>
   </body>

@@ -31,6 +31,7 @@ type IdeaState = {
   setScreen: (screen: WorkspaceScreen) => void
   enrichIdea: (id: string, analysis?: AiAnalysis) => void
   discardSelected: () => void
+  deleteSelectedIdea: () => boolean
   setStatusMessage: (message: StatusMessageKey | null) => void
   queueRemoteWrite: (endpoint: string, init: SyncQueueItem['init'], successMessage?: StatusMessageKey) => Promise<void>
   flushSyncQueue: () => Promise<void>
@@ -214,6 +215,20 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
     if (!selectedIdeaId) return
     get().updateIdea(selectedIdeaId, { status: 'TRASH' })
     set({ detailOpen: false, statusMessage: 'status.movedTo.TRASH' })
+  },
+  deleteSelectedIdea: () => {
+    const selectedIdeaId = get().selectedIdeaId
+    if (!selectedIdeaId) return false
+
+    const selectedIdea = get().ideas.find((idea) => idea.id === selectedIdeaId)
+    if (!selectedIdea || selectedIdea.status !== 'TRASH') return false
+
+    const ideas = get().ideas.filter((idea) => idea.id !== selectedIdeaId)
+    persistIdeas(ideas)
+    const successMessage: StatusMessageKey = 'status.deleted'
+    set({ ideas, selectedIdeaId: null, detailOpen: false, statusMessage: successMessage })
+    void get().queueRemoteWrite(`/api/ideas/${selectedIdeaId}`, { method: 'DELETE' }, successMessage)
+    return true
   },
   setStatusMessage: (message) => set({ statusMessage: message }),
   queueRemoteWrite: async (endpoint, init, successMessage) => {

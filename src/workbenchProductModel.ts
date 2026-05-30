@@ -17,7 +17,7 @@ export type IdeaPoolLensModel = {
 }
 
 export type DragClassificationTarget = {
-  status: Extract<IdeaStatus, 'PIPELINE' | 'TRASH'>
+  status: Extract<IdeaStatus, 'INBOX' | 'PIPELINE' | 'TRASH'>
   label: string
   description: string
 }
@@ -49,6 +49,7 @@ export const buildIdeaPoolLenses = (locale: Locale): IdeaPoolLensModel[] => [
 export const ideaPoolLenses: IdeaPoolLensModel[] = buildIdeaPoolLenses(defaultLocale)
 
 export const buildDragClassificationTargets = (locale: Locale): DragClassificationTarget[] => [
+  { status: 'INBOX', label: t(locale, 'drag.target.INBOX.label'), description: t(locale, 'drag.target.INBOX.description') },
   { status: 'PIPELINE', label: t(locale, 'drag.target.PIPELINE.label'), description: t(locale, 'drag.target.PIPELINE.description') },
   { status: 'TRASH', label: t(locale, 'drag.target.TRASH.label'), description: t(locale, 'drag.target.TRASH.description') },
 ]

@@ -75,4 +75,24 @@ describe('single-pool idea lens store behavior', () => {
       }),
     )
   })
+
+  it('permanently deletes only archived ideas', async () => {
+    useIdeaStore.setState({ selectedIdeaId: 'seed', detailOpen: true })
+
+    const inboxResult = useIdeaStore.getState().deleteSelectedIdea()
+    await Promise.resolve()
+
+    expect(inboxResult).toBe(false)
+    expect(useIdeaStore.getState().ideas.map((item) => item.id)).toContain('seed')
+    expect(fetch).not.toHaveBeenCalledWith('/api/ideas/seed', expect.objectContaining({ method: 'DELETE' }))
+
+    useIdeaStore.setState({ selectedIdeaId: 'parked', detailOpen: true })
+    const archivedResult = useIdeaStore.getState().deleteSelectedIdea()
+    await Promise.resolve()
+
+    expect(archivedResult).toBe(true)
+    expect(useIdeaStore.getState().ideas.map((item) => item.id)).not.toContain('parked')
+    expect(useIdeaStore.getState().detailOpen).toBe(false)
+    expect(fetch).toHaveBeenCalledWith('/api/ideas/parked', expect.objectContaining({ method: 'DELETE' }))
+  })
 })
