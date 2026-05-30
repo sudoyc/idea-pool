@@ -48,4 +48,9 @@ describe('polished interaction source contracts', () => {
     expect(appSource).toContain("idea.status === 'TRASH'")
     expect(appSource).toContain('deleteSelectedIdea')
   })
+
+  it('keeps browser back inside the app by seeding a workbench history state before detail pushState', () => {
+    expect(appSource).toContain("window.history.replaceState({ workspaceRoute: 'workbench' }, '')")
+    expect(appSource.indexOf("window.history.replaceState({ workspaceRoute: 'workbench' }, '')")).toBeLessThan(appSource.indexOf('window.history.pushState({ ideaDetailId: selectedIdeaId }'))
+  })
 })

@@ -7,6 +7,7 @@ import type { RequestHandler } from 'express'
 import { assertAuthConfiguration, login, logout, requireAgentToken, requireSession, requireSessionOrToken, session } from './auth.js'
 import {
   createFileMetadata,
+  db,
   deleteFileMetadata,
   deleteIdea,
   getFile,
@@ -23,7 +24,7 @@ import {
   upsertIdea,
 } from './db.js'
 import { completeIdea } from './llm.js'
-import { deleteStoredFile, filesDir, isSafeFilename, readStoredFile, writeStoredFile } from './storage.js'
+import { clearStoredFiles, deleteStoredFile, filesDir, isSafeFilename, readStoredFile, writeStoredFile } from './storage.js'
 import type { AiAnalysis, IdeaRecord, IdeaSource, IdeaStatus } from './types.js'
 
 const port = Number(process.env.PORT ?? 3000)
@@ -42,6 +43,8 @@ const settingsDefaults = {
   agentExposure: 'private',
 }
 const editableSettings = ['workspaceName', 'llmModel', 'embeddingModel', 'storagePath', 'agentExposure'] as const
+const backupRestoreSettingsKeys = ['workspaceName', 'llmModel', 'embeddingModel', 'agentExposure'] as const
+const backupSkippedSettingsKeys = ['schemaVersion', 'storagePath', 'agentBasePath', 'llmApiKeyConfigured', 'llmApiKeyMasked'] as const
 const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
 const slugify = (value: string) =>
@@ -207,6 +210,14 @@ const buildBackupManifest = () => {
     ideaEvents: ideas.flatMap((idea) => listIdeaEvents(idea.id)),
     aiCompletions: ideas.flatMap((idea) => listAiCompletions(idea.id)),
     files: listFiles(),
+    boundaries: {
+      singleUser: true,
+      includesRawSecrets: false,
+      includesStoredFileContents: false,
+      restoreRequiresExplicitReplace: true,
+      restoresSettingsKeys: [...backupRestoreSettingsKeys],
+      skipsSettingsKeys: [...backupSkippedSettingsKeys],
+    },
   }
 }
 
@@ -224,6 +235,75 @@ const createBackupExport = () => {
     sha256: stored.sha256,
   })
   return { file, manifest }
+}
+
+type BackupManifest = Omit<ReturnType<typeof buildBackupManifest>, 'settings'> & { settings: Record<string, unknown> }
+
+const importBackupManifest = (manifest: BackupManifest, mode?: string) => {
+  if (manifest.schemaVersion !== 1) {
+    return { status: 400 as const, body: { error: `Unsupported backup schemaVersion: ${manifest.schemaVersion}` } }
+  }
+  if (mode !== 'replace' && (listIdeas().length > 0 || listFiles().length > 0)) {
+    return { status: 409 as const, body: { error: 'Import would overwrite existing local data. Re-run with mode: "replace".' } }
+  }
+
+  const restore = db.transaction(() => {
+    if (mode === 'replace') {
+      clearStoredFiles()
+      db.exec('DELETE FROM files; DELETE FROM ai_completions; DELETE FROM idea_events; DELETE FROM ideas;')
+    }
+
+    for (const idea of manifest.ideas) upsertIdea(idea as IdeaRecord)
+    for (const event of manifest.ideaEvents) {
+      recordIdeaEvent({
+        ideaId: String(event.ideaId),
+        type: String(event.type),
+        actor: String(event.actor),
+        payload: (event as { payload?: unknown }).payload,
+        id: String(event.id),
+        createdAt: String(event.createdAt),
+      })
+    }
+    for (const completion of manifest.aiCompletions) {
+      recordAiCompletion({
+        ideaId: String(completion.ideaId),
+        provider: typeof completion.provider === 'string' ? completion.provider : null,
+        model: typeof completion.model === 'string' ? completion.model : null,
+        promptHash: typeof completion.promptHash === 'string' ? completion.promptHash : null,
+        ideaVersion: typeof completion.ideaVersion === 'number' ? completion.ideaVersion : 1,
+        input: (completion as { input?: unknown }).input,
+        output: (completion as { output?: unknown }).output,
+        status: String(completion.status),
+        error: typeof completion.error === 'string' ? completion.error : null,
+        id: String(completion.id),
+        createdAt: String(completion.createdAt),
+      })
+    }
+
+    let restoredSettings = 0
+    for (const key of backupRestoreSettingsKeys) {
+      const value = manifest.settings[key]
+      if (typeof value === 'string') {
+        setSetting(key, value)
+        restoredSettings += 1
+      }
+    }
+
+    return {
+      restored: {
+        ideas: manifest.ideas.length,
+        ideaEvents: manifest.ideaEvents.length,
+        aiCompletions: manifest.aiCompletions.length,
+        settings: restoredSettings,
+      },
+      skipped: {
+        files: manifest.files.length,
+        settings: [...backupSkippedSettingsKeys],
+      },
+    }
+  })
+
+  return { status: 201 as const, body: restore() }
 }
 
 const createContentFileHandler: RequestHandler = (request, response) => {
@@ -484,6 +564,15 @@ export const createApp = () => {
     response.json({ settings: getSettings() })
   })
   app.put('/api/settings', requireSession, handleSettingsUpdate)
+  app.post('/api/settings/import', requireSession, (request, response) => {
+    const body = request.body as { manifest?: BackupManifest; mode?: string }
+    if (!body.manifest) {
+      response.status(400).json({ error: 'manifest is required' })
+      return
+    }
+    const result = importBackupManifest(body.manifest, body.mode)
+    response.status(result.status).json(result.body)
+  })
   app.post('/api/settings/backup', requireSession, (_request, response) => {
     response.status(201).json(createBackupExport())
   })

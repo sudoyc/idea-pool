@@ -31,7 +31,7 @@ const resetStore = () => {
     activeLens: 'ALL',
     screen: 'WORKBENCH',
     statusMessage: null,
-    sync: { status: 'idle', pendingCount: 0, lastError: null, lastSyncedAt: null },
+    sync: { syncState: 'idle', pendingCount: 0, lastSyncError: null, lastSyncedAt: null },
     syncQueue: [],
   } as Partial<ReturnType<typeof useIdeaStore.getState>>)
 }

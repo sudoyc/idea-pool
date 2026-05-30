@@ -26,7 +26,7 @@ describe('phase 2 product model contracts', () => {
       queued: '远端同步已排队 (queued)',
       syncing: '正在同步远端副本',
       synced: '远端副本已最新',
-      error: '远端同步需要处理',
+      failed: '远端同步失败，等待重试',
     })
   })
 })

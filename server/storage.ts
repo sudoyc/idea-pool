@@ -55,3 +55,7 @@ export const listStoredFileKeys = () => {
   collectStorageKeys(root, root, keys)
   return keys.sort()
 }
+
+export const clearStoredFiles = () => {
+  rmSync(filesDir(), { recursive: true, force: true })
+}

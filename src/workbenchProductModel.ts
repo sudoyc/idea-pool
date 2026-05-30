@@ -237,7 +237,7 @@ export const buildSyncStatusCopy = (locale: Locale) => ({
   queued: t(locale, 'sync.queued'),
   syncing: t(locale, 'sync.syncing'),
   synced: t(locale, 'sync.synced'),
-  error: t(locale, 'sync.error'),
+  failed: t(locale, 'sync.failed'),
 })
 
 export const syncStatusCopy = buildSyncStatusCopy(defaultLocale)

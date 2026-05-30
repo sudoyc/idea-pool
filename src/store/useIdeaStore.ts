@@ -7,7 +7,7 @@ import type { AiAnalysis, IdeaPatch, IdeaPoolLens, IdeaStatus, WorkbenchIdea, Wo
 
 const storageKey = 'personal-idea-workbench:v1'
 
-type SyncStatus = 'idle' | 'queued' | 'syncing' | 'synced' | 'error'
+type SyncStatus = 'idle' | 'queued' | 'syncing' | 'synced' | 'failed'
 type StatusMessageKey = Extract<TranslationKey, `status.${string}` | `sync.${string}`>
 
 type IdeaState = {
@@ -38,9 +38,9 @@ type IdeaState = {
 }
 
 type SyncState = {
-  status: SyncStatus
+  syncState: SyncStatus
   pendingCount: number
-  lastError: string | null
+  lastSyncError: string | null
   lastSyncedAt: string | null
 }
 
@@ -82,7 +82,7 @@ const persistIdeas = (ideas: WorkbenchIdea[]) => {
 // Keep the source contract explicit: 主视图保持为单一 idea pool
 const defaultAnalysis = (): AiAnalysis => createDefaultAnalysis(getCurrentLocale())
 
-const initialSyncState: SyncState = { status: 'idle', pendingCount: 0, lastError: null, lastSyncedAt: null }
+const initialSyncState: SyncState = { syncState: 'idle', pendingCount: 0, lastSyncError: null, lastSyncedAt: null }
 
 const createSyncItem = (endpoint: string, init: SyncQueueItem['init']): SyncQueueItem => ({
   id: `sync-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -235,7 +235,7 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
     try {
       await remoteWrite(endpoint, init)
       set({
-        sync: { status: 'synced', pendingCount: get().syncQueue.length, lastError: null, lastSyncedAt: timestamp() },
+        sync: { syncState: 'synced', pendingCount: get().syncQueue.length, lastSyncError: null, lastSyncedAt: timestamp() },
         statusMessage: successMessage ?? get().statusMessage,
       })
     } catch (error) {
@@ -243,44 +243,44 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
       set({
         syncQueue,
         sync: {
-          status: 'queued',
+          syncState: 'failed',
           pendingCount: syncQueue.length,
-          lastError: error instanceof Error ? error.message : 'Remote sync failed',
+          lastSyncError: error instanceof Error ? error.message : 'Remote sync failed',
           lastSyncedAt: get().sync.lastSyncedAt,
         },
-        statusMessage: 'sync.queued',
+        statusMessage: 'sync.failed',
       })
     }
   },
   flushSyncQueue: async () => {
     const queue = get().syncQueue
     if (queue.length === 0) {
-      set({ sync: { status: 'synced', pendingCount: 0, lastError: null, lastSyncedAt: timestamp() } })
+      set({ sync: { syncState: 'synced', pendingCount: 0, lastSyncError: null, lastSyncedAt: timestamp() } })
       return
     }
 
-    set({ sync: { ...get().sync, status: 'syncing', pendingCount: queue.length, lastError: null } })
+    set({ sync: { ...get().sync, syncState: 'syncing', pendingCount: queue.length, lastSyncError: null } })
 
     for (const item of queue) {
       try {
         await remoteWrite(item.endpoint, item.init)
         const syncQueue = get().syncQueue.filter((queued) => queued.id !== item.id)
-        set({ syncQueue, sync: { status: 'syncing', pendingCount: syncQueue.length, lastError: null, lastSyncedAt: get().sync.lastSyncedAt } })
+        set({ syncQueue, sync: { syncState: 'syncing', pendingCount: syncQueue.length, lastSyncError: null, lastSyncedAt: get().sync.lastSyncedAt } })
       } catch (error) {
         const syncQueue = get().syncQueue
         set({
           sync: {
-            status: 'error',
+            syncState: 'failed',
             pendingCount: syncQueue.length,
-            lastError: error instanceof Error ? error.message : 'Remote sync failed',
+            lastSyncError: error instanceof Error ? error.message : 'Remote sync failed',
             lastSyncedAt: get().sync.lastSyncedAt,
           },
-          statusMessage: 'sync.error',
+          statusMessage: 'sync.failed',
         })
         return
       }
     }
 
-    set({ sync: { status: 'synced', pendingCount: 0, lastError: null, lastSyncedAt: timestamp() }, statusMessage: 'sync.synced' })
+    set({ sync: { syncState: 'synced', pendingCount: 0, lastSyncError: null, lastSyncedAt: timestamp() }, statusMessage: 'sync.synced' })
   },
 }))

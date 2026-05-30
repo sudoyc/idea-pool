@@ -36,6 +36,7 @@ import { useI18n } from './i18n/useI18n'
 import type { TranslationKey } from './i18n/messages'
 import type { Locale } from './i18n/types'
 import { defaultWorkbenchSettings, loadWorkbenchSettings, saveWorkbenchSettings, triggerWorkbenchBackup, type WorkbenchSettings } from './settingsClient'
+import { resolveDetailShortcut } from './detailKeyboard'
 import { getVisibleIdeasForLens, useIdeaStore } from './store/useIdeaStore'
 import {
   buildDragClassificationTargets,
@@ -64,6 +65,10 @@ const lensIcons: Record<IdeaPoolLens, typeof Inbox> = {
 const classificationTargetId = (status: IdeaStatus) => `classification:${status}`
 const dateTimeLocaleByUiLocale: Record<Locale, string> = { zh: 'zh-CN', en: 'en-US' }
 const localeLabelKeys: Record<Locale, TranslationKey> = { zh: 'locale.zh', en: 'locale.en' }
+const isTextEntryTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+}
 
 function App() {
   const { locale, setLocale, t } = useI18n()
@@ -180,6 +185,12 @@ function App() {
   }
 
   useEffect(() => {
+    if (!window.history.state?.workspaceRoute && !window.history.state?.ideaDetailId) {
+      window.history.replaceState({ workspaceRoute: 'workbench' }, '')
+    }
+  }, [])
+
+  useEffect(() => {
     if (!detailOpen || !selectedIdeaId) return
     if (window.history.state?.ideaDetailId === selectedIdeaId) return
     window.history.pushState({ ideaDetailId: selectedIdeaId }, '')
@@ -193,13 +204,33 @@ function App() {
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && detailOpen) {
+      const action = resolveDetailShortcut({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        detailOpen,
+        isTextInput: isTextEntryTarget(event.target),
+        isComposing: event.isComposing,
+      })
+
+      if (action === 'closeDetail') {
         event.preventDefault()
         if (window.history.state?.ideaDetailId) {
           window.history.back()
         } else {
           closeDetail()
         }
+        return
+      }
+
+      if (action === 'saveDetail') {
+        event.preventDefault()
+        return
+      }
+
+      if (action === 'newSeed') {
+        event.preventDefault()
+        createIdea()
       }
     }
 
@@ -209,7 +240,7 @@ function App() {
       window.removeEventListener('popstate', onPopState)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [closeDetail, detailOpen])
+  }, [closeDetail, createIdea, detailOpen])
 
   const handleCloseDetail = () => {
     if (window.history.state?.ideaDetailId) {
@@ -321,8 +352,8 @@ function App() {
             <div className="topbar-actions">
               <LocaleSwitcher locale={locale} setLocale={setLocale} />
               <span className="topbar-status-slot">{statusMessage ? <span className="status-message">{t(statusMessage)}</span> : null}</span>
-              <button className={`sync-chip sync-chip--${sync.status}`} type="button" onClick={flushSyncQueue}>
-                {syncStatusCopy[sync.status]}
+              <button className={`sync-chip sync-chip--${sync.syncState}`} title={sync.lastSyncError ?? undefined} type="button" onClick={flushSyncQueue}>
+                {syncStatusCopy[sync.syncState]}
                 {sync.pendingCount > 0 ? ` (${sync.pendingCount})` : ''}
               </button>
               {screen === 'WORKBENCH' ? (

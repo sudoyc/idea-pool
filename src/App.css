@@ -278,7 +278,7 @@
 }
 
 .sync-chip--queued,
-.sync-chip--error {
+.sync-chip--failed {
   border-color: rgba(251, 191, 36, 0.42);
   color: #fbbf24;
 }

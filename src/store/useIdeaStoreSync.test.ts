@@ -7,9 +7,10 @@ const resetStore = () => {
     selectedIdeaId: null,
     detailOpen: false,
     activeFilter: 'PIPELINE',
+    activeLens: 'ALL',
     screen: 'WORKBENCH',
     statusMessage: null,
-    sync: { status: 'idle', pendingCount: 0, lastError: null, lastSyncedAt: null },
+    sync: { syncState: 'idle', pendingCount: 0, lastSyncError: null, lastSyncedAt: null },
     syncQueue: [],
   } as Partial<ReturnType<typeof useIdeaStore.getState>>)
 }
@@ -23,7 +24,7 @@ describe('local-first remote sync queue', () => {
     vi.unstubAllGlobals()
   })
 
-  it('queues failed local writes and flushes them when the server is reachable again', async () => {
+  it('tracks queued, syncing, synced, and failed local-first writes with timestamps and semantic errors', async () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new Error('offline'))
@@ -35,12 +36,14 @@ describe('local-first remote sync queue', () => {
     await Promise.resolve()
 
     expect(useIdeaStore.getState().ideas).toHaveLength(1)
-    expect(useIdeaStore.getState().sync).toMatchObject({ status: 'queued', pendingCount: 1 })
-    expect(useIdeaStore.getState().statusMessage).toBe('sync.queued')
+    expect(useIdeaStore.getState().sync).toMatchObject({ syncState: 'failed', pendingCount: 1, lastSyncError: 'offline' })
+    expect(useIdeaStore.getState().statusMessage).toBe('sync.failed')
 
-    await useIdeaStore.getState().flushSyncQueue()
+    const flushPromise = useIdeaStore.getState().flushSyncQueue()
+    expect(useIdeaStore.getState().sync.syncState).toBe('syncing')
+    await flushPromise
 
-    expect(useIdeaStore.getState().sync).toMatchObject({ status: 'synced', pendingCount: 0, lastError: null })
+    expect(useIdeaStore.getState().sync).toMatchObject({ syncState: 'synced', pendingCount: 0, lastSyncError: null })
     expect(useIdeaStore.getState().sync.lastSyncedAt).toEqual(expect.any(String))
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
