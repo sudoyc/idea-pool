@@ -3,7 +3,7 @@ import express from 'express'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { RequestHandler } from 'express'
-import { assertAuthConfiguration, login, logout, requireAgentToken, requireSessionOrToken, session } from './auth.js'
+import { assertAuthConfiguration, login, logout, requireAgentToken, requireSession, requireSessionOrToken, session } from './auth.js'
 import {
   createFileMetadata,
   deleteFileMetadata,
@@ -278,10 +278,27 @@ export const createApp = () => {
 
   agentRouter.get('/context', (_request, response) => {
     response.json({
-      workspace: { name: 'Personal Idea Workbench' },
-      api: { version: 'v1' },
-      rules: { localFirst: true },
+      protocol: { name: 'personal-idea-workbench-agent', version: 1 },
+      workspace: { name: 'Personal Idea Workbench', model: 'Local-first Kanban + Spatial Detail View + AI Augmentation' },
+      api: { version: 'v1', basePath: '/api/agent/v1', settingsSchemaVersion },
+      auth: { agent: 'bearer', web: 'session-cookie', settingsWritable: false },
+      rules: { localFirst: true, singleUser: true, selectedIdeaOnlyAi: true, aiMaySelectIdea: false },
+      ai: { completionScope: 'selected-idea', requiresIdeaId: true, autoSelectIdea: false },
       capabilities: ['ideas', 'events', 'completion', 'agent_pack', 'files'],
+      routes: [
+        { method: 'GET', path: '/context', auth: 'bearer' },
+        { method: 'GET', path: '/schema', auth: 'bearer' },
+        { method: 'GET', path: '/settings', auth: 'bearer', writable: false },
+        { method: 'GET', path: '/ideas', auth: 'bearer' },
+        { method: 'POST', path: '/ideas', auth: 'bearer' },
+        { method: 'GET', path: '/ideas/:id', auth: 'bearer' },
+        { method: 'PATCH', path: '/ideas/:id', auth: 'bearer' },
+        { method: 'DELETE', path: '/ideas/:id', auth: 'bearer' },
+        { method: 'POST', path: '/ideas/:id/complete', auth: 'bearer', scope: 'selected-idea-ai' },
+        { method: 'POST', path: '/ideas/:id/agent-pack', auth: 'bearer' },
+        { method: 'GET', path: '/ideas/:id/files', auth: 'bearer' },
+        { method: 'POST', path: '/ideas/:id/files/content', auth: 'bearer' },
+      ],
     })
   })
 
@@ -420,15 +437,19 @@ export const createApp = () => {
   agentRouter.get('/files/:id/download', downloadFileHandler)
   agentRouter.delete('/files/:id', deleteFileHandler)
 
+  agentRouter.post('/complete', (_request, response) => {
+    response.status(404).json({ error: 'Use /api/agent/v1/ideas/:id/complete with an explicit idea id.' })
+  })
+
   app.use('/api/agent/v1', agentRouter)
 
   app.use('/api', requireSessionOrToken)
 
-  app.get('/api/settings', (_request, response) => {
+  app.get('/api/settings', requireSession, (_request, response) => {
     response.json({ settings: getSettings() })
   })
-  app.put('/api/settings', handleSettingsUpdate)
-  app.post('/api/settings/backup', (_request, response) => {
+  app.put('/api/settings', requireSession, handleSettingsUpdate)
+  app.post('/api/settings/backup', requireSession, (_request, response) => {
     response.status(201).json(createBackupExport())
   })
 

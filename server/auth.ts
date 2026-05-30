@@ -157,6 +157,16 @@ export const requireSessionOrToken = (request: Request, response: Response, next
   response.status(401).json({ error: 'Unauthorized', authEnabled: state.authEnabled, authMode: state.authMode })
 }
 
+export const requireSession = (request: Request, response: Response, next: NextFunction) => {
+  const state = getSessionState(request)
+  if (!state.authEnabled || state.principal === 'session' || state.principal === 'disabled') {
+    next()
+    return
+  }
+
+  response.status(401).json({ error: 'Session required', authEnabled: state.authEnabled, authMode: state.authMode })
+}
+
 export const requireAgentToken = (request: Request, response: Response, next: NextFunction) => {
   if (!getAuthEnabled()) {
     next()
