@@ -14,6 +14,7 @@ import {
   listFiles,
   listIdeaEvents,
   listIdeas,
+  listAiCompletions,
   patchIdea,
   recordAiCompletion,
   recordIdeaEvent,
@@ -21,7 +22,7 @@ import {
   upsertIdea,
 } from './db.js'
 import { completeIdea } from './llm.js'
-import { deleteStoredFile, isSafeFilename, readStoredFile, writeStoredFile } from './storage.js'
+import { deleteStoredFile, filesDir, isSafeFilename, readStoredFile, writeStoredFile } from './storage.js'
 import type { AiAnalysis, IdeaRecord, IdeaSource, IdeaStatus } from './types.js'
 
 const port = Number(process.env.PORT ?? 3000)
@@ -29,13 +30,17 @@ const port = Number(process.env.PORT ?? 3000)
 const ideaStatuses: IdeaStatus[] = ['INBOX', 'PIPELINE', 'TRASH']
 const ideaSources: IdeaSource[] = ['local', 'agent', 'import', 'llm']
 const fileKinds = ['attachment', 'export', 'agent_pack', 'markdown', 'image']
+const settingsSchemaVersion = 2
 const settingsDefaults = {
+  schemaVersion: settingsSchemaVersion,
   workspaceName: 'Personal Idea Workbench',
   llmModel: process.env.LLM_MODEL ?? 'fallback',
+  embeddingModel: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',
+  storagePath: process.env.IDEA_POOL_STORAGE_PATH ?? filesDir(),
   agentBasePath: '/api/agent/v1',
   agentExposure: 'private',
 }
-const editableSettings = ['workspaceName', 'llmModel', 'agentExposure'] as const
+const editableSettings = ['workspaceName', 'llmModel', 'embeddingModel', 'storagePath', 'agentExposure'] as const
 const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
 const slugify = (value: string) =>
@@ -126,13 +131,29 @@ const buildAgentPackMarkdown = (idea: IdeaRecord, aiAnalysis?: AiAnalysis) => {
   return `${lines.join('\n')}\n`
 }
 
-const getSettings = () =>
-  Object.fromEntries(
+const getStoredLlmApiKey = () => {
+  const saved = getSetting('llmApiKey')
+  return typeof saved === 'string' && saved.length > 0 ? saved : process.env.LLM_API_KEY ?? ''
+}
+
+const maskSecret = (value: string) => (value.length > 0 ? `••••${value.slice(-4)}` : '')
+
+const getSettings = () => {
+  const settings = Object.fromEntries(
     Object.entries(settingsDefaults).map(([key, defaultValue]) => {
       const saved = getSetting(key)
       return [key, saved ?? defaultValue]
     }),
   )
+  const llmApiKey = getStoredLlmApiKey()
+  return {
+    ...settings,
+    schemaVersion: settingsSchemaVersion,
+    storagePath: settings.storagePath ?? filesDir(),
+    llmApiKeyConfigured: llmApiKey.length > 0,
+    llmApiKeyMasked: maskSecret(llmApiKey),
+  }
+}
 
 const handleSettingsUpdate: RequestHandler = (request, response) => {
   const body = request.body as Record<string, unknown>
@@ -141,7 +162,40 @@ const handleSettingsUpdate: RequestHandler = (request, response) => {
       setSetting(key, body[key])
     }
   }
+  if (typeof body.llmApiKey === 'string') {
+    setSetting('llmApiKey', body.llmApiKey)
+  }
   response.json({ settings: getSettings() })
+}
+
+const buildBackupManifest = () => {
+  const ideas = listIdeas()
+  return {
+    schemaVersion: 1,
+    product: 'Personal Idea Workbench',
+    exportedAt: new Date().toISOString(),
+    settings: getSettings(),
+    ideas,
+    ideaEvents: ideas.flatMap((idea) => listIdeaEvents(idea.id)),
+    aiCompletions: ideas.flatMap((idea) => listAiCompletions(idea.id)),
+    files: listFiles(),
+  }
+}
+
+const createBackupExport = () => {
+  const manifest = buildBackupManifest()
+  const filename = `personal-idea-workbench-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+  const storageKey = `exports/${Date.now().toString(36)}-${filename}`
+  const stored = writeStoredFile(storageKey, JSON.stringify(manifest, null, 2))
+  const file = createFileMetadata({
+    kind: 'export',
+    filename,
+    mimeType: 'application/json',
+    sizeBytes: stored.sizeBytes,
+    storageKey,
+    sha256: stored.sha256,
+  })
+  return { file, manifest }
 }
 
 const createContentFileHandler: RequestHandler = (request, response) => {
@@ -374,6 +428,9 @@ export const createApp = () => {
     response.json({ settings: getSettings() })
   })
   app.put('/api/settings', handleSettingsUpdate)
+  app.post('/api/settings/backup', (_request, response) => {
+    response.status(201).json(createBackupExport())
+  })
 
   app.get('/api/ideas', (_request, response) => {
     response.json({ ideas: listIdeas() })

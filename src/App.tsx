@@ -35,15 +35,18 @@ import './App.css'
 import { useI18n } from './i18n/useI18n'
 import type { TranslationKey } from './i18n/messages'
 import type { Locale } from './i18n/types'
-import { defaultWorkbenchSettings, loadWorkbenchSettings, saveWorkbenchSettings, type WorkbenchSettings } from './settingsClient'
+import { defaultWorkbenchSettings, loadWorkbenchSettings, saveWorkbenchSettings, triggerWorkbenchBackup, type WorkbenchSettings } from './settingsClient'
 import { getVisibleIdeasForLens, useIdeaStore } from './store/useIdeaStore'
 import {
   buildDragClassificationTargets,
   buildIdeaPoolLenses,
   buildSettingsControls,
   buildSettingsReadOnlyItems,
+  buildSettingsRuntimeItems,
+  buildSettingsBackupAction,
   buildSyncStatusCopy,
   buildWorkspacePoolModelCopy,
+  type SettingsControlKey,
 } from './workbenchProductModel'
 import { statusOrder, type IdeaPoolLens, type IdeaStatus, type WorkbenchIdea } from './workbenchTypes'
 
@@ -800,8 +803,12 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
   const { locale, t } = useI18n()
   const settingsControls = useMemo(() => buildSettingsControls(locale), [locale])
   const settingsReadOnlyItems = useMemo(() => buildSettingsReadOnlyItems(locale), [locale])
+  const settingsRuntimeItems = useMemo(() => buildSettingsRuntimeItems(locale), [locale])
+  const settingsBackupAction = useMemo(() => buildSettingsBackupAction(locale), [locale])
   const [settings, setSettings] = useState<WorkbenchSettings>(defaultWorkbenchSettings)
+  const [llmApiKey, setLlmApiKey] = useState('')
   const [saving, setSaving] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
   const [messageKey, setMessageKey] = useState<TranslationKey | null>(null)
 
   useEffect(() => {
@@ -819,13 +826,39 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
     setSaving(true)
     setMessageKey(null)
     try {
-      const saved = await saveWorkbenchSettings(settings)
+      const saved = await saveWorkbenchSettings(settings, fetch, llmApiKey.trim() || undefined)
+      if (saved) setLlmApiKey('')
       setMessageKey(saved ? 'settings.saved' : 'settings.saveFailed')
     } catch {
       setMessageKey('settings.saveFailed')
     } finally {
       setSaving(false)
     }
+  }
+
+  const createBackup = async () => {
+    setBackingUp(true)
+    setMessageKey(null)
+    try {
+      const backup = await triggerWorkbenchBackup()
+      setMessageKey(backup.ok ? 'settings.backup.created' : 'settings.backup.failed')
+    } catch {
+      setMessageKey('settings.backup.failed')
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
+  const getSettingValue = (key: SettingsControlKey) => {
+    if (key === 'llmApiKey') return llmApiKey
+    return String(settings[key as keyof WorkbenchSettings] ?? '')
+  }
+  const updateSettingValue = (key: SettingsControlKey, value: string) => {
+    if (key === 'llmApiKey') {
+      setLlmApiKey(value)
+      return
+    }
+    setSettings((current) => ({ ...current, [key]: value }))
   }
 
   return (
@@ -852,8 +885,8 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
                     <select
                       className="settings-input"
                       id={`setting-${control.key}`}
-                      onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
-                      value={settings[control.key]}
+                      onChange={(event) => updateSettingValue(control.key, event.target.value)}
+                      value={getSettingValue(control.key)}
                     >
                       {control.options?.map((option) => (
                         <option key={option} value={option}>
@@ -865,9 +898,10 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
                     <input
                       className="settings-input"
                       id={`setting-${control.key}`}
-                      onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.value }))}
-                      type="text"
-                      value={settings[control.key]}
+                      onChange={(event) => updateSettingValue(control.key, event.target.value)}
+                      type={control.input === 'password' ? 'password' : 'text'}
+                      value={getSettingValue(control.key)}
+                      readOnly={control.readOnlyRuntime}
                     />
                   )}
                 </div>
@@ -878,7 +912,14 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
             <button className="btn primary" disabled={saving} type="button" onClick={saveSettings}>
               {saving ? t('action.saving') : t('action.saveSettings')}
             </button>
+            <button className="btn secondary" disabled={backingUp} type="button" onClick={createBackup}>
+              {backingUp ? t('action.saving') : settingsBackupAction.label}
+            </button>
           </div>
+          <p className="settings-secret-status">
+            LLM API Key: {settings.llmApiKeyConfigured ? settings.llmApiKeyMasked : t('settings.secret.notConfigured')}
+          </p>
+          <p className="settings-message settings-message--muted">{settingsBackupAction.description}</p>
           {messageKey && <p className="settings-message">{t(messageKey)}</p>}
         </section>
 
@@ -894,6 +935,21 @@ function SettingsView({ authEnabled, authMode, onLogout }: { authEnabled: boolea
           </div>
           <div className="settings-form-flow settings-form-flow--readonly">
             {settingsReadOnlyItems.map((item) => (
+              <div className="setting-item" key={item.id}>
+                <div className="setting-info">
+                  <div className="settings-label">{item.label}</div>
+                  <p>{item.description}</p>
+                </div>
+                <div className="setting-control setting-control--tags">
+                  {item.tags.map((tag) => (
+                    <code key={tag}>{tag}</code>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="settings-form-flow settings-form-flow--readonly settings-runtime-flow">
+            {settingsRuntimeItems.map((item) => (
               <div className="setting-item" key={item.id}>
                 <div className="setting-info">
                   <div className="settings-label">{item.label}</div>

@@ -10,6 +10,13 @@ export type SettingsReadOnlyItem = {
   tags: string[]
 }
 
+export type SettingsRuntimeItem = {
+  id: 'frontendPort' | 'backendAddress' | 'agentEndpoint' | 'storageRoot'
+  label: string
+  description: string
+  tags: string[]
+}
+
 export type IdeaPoolLensModel = {
   id: IdeaPoolLens
   label: string
@@ -22,13 +29,24 @@ export type DragClassificationTarget = {
   description: string
 }
 
+export type SettingsControlKey = 'workspaceName' | 'llmModel' | 'embeddingModel' | 'llmApiKey' | 'storagePath' | 'agentExposure'
+
 export type SettingsControl = {
-  key: 'workspaceName' | 'llmModel' | 'agentExposure'
+  key: SettingsControlKey
   label: string
   description: string
   storageKey: string
-  input: 'text' | 'select'
+  input: 'text' | 'select' | 'password'
   options?: string[]
+  readOnlyRuntime?: boolean
+}
+
+export type SettingsBackupAction = {
+  id: 'export-backup'
+  label: string
+  description: string
+  endpoint: '/api/settings/backup'
+  method: 'POST'
 }
 
 export type FilePanelAction = {
@@ -86,6 +104,28 @@ export const buildSettingsControls = (locale: Locale): SettingsControl[] => [
     input: 'text',
   },
   {
+    key: 'embeddingModel',
+    label: t(locale, 'settings.control.embeddingModel.label'),
+    description: t(locale, 'settings.control.embeddingModel.description'),
+    storageKey: 'settings.embeddingModel',
+    input: 'text',
+  },
+  {
+    key: 'llmApiKey',
+    label: t(locale, 'settings.control.llmApiKey.label'),
+    description: t(locale, 'settings.control.llmApiKey.description'),
+    storageKey: 'settings.llmApiKey',
+    input: 'password',
+  },
+  {
+    key: 'storagePath',
+    label: t(locale, 'settings.control.storagePath.label'),
+    description: t(locale, 'settings.control.storagePath.description'),
+    storageKey: 'settings.storagePath',
+    input: 'text',
+    readOnlyRuntime: true,
+  },
+  {
     key: 'agentExposure',
     label: t(locale, 'settings.control.agentExposure.label'),
     description: t(locale, 'settings.control.agentExposure.description'),
@@ -131,6 +171,45 @@ export const buildSettingsReadOnlyItems = (locale: Locale): SettingsReadOnlyItem
 ]
 
 export const settingsReadOnlyItems: SettingsReadOnlyItem[] = buildSettingsReadOnlyItems(defaultLocale)
+
+export const buildSettingsRuntimeItems = (locale: Locale): SettingsRuntimeItem[] => [
+  {
+    id: 'frontendPort',
+    label: t(locale, 'settings.runtime.frontendPort.label'),
+    description: t(locale, 'settings.runtime.frontendPort.description'),
+    tags: ['Vite :5173', 'Prod :3000'],
+  },
+  {
+    id: 'backendAddress',
+    label: t(locale, 'settings.runtime.backendAddress.label'),
+    description: t(locale, 'settings.runtime.backendAddress.description'),
+    tags: ['/api/*', 'Express'],
+  },
+  {
+    id: 'agentEndpoint',
+    label: t(locale, 'settings.runtime.agentEndpoint.label'),
+    description: t(locale, 'settings.runtime.agentEndpoint.description'),
+    tags: ['/api/agent/v1', 'Bearer token'],
+  },
+  {
+    id: 'storageRoot',
+    label: t(locale, 'settings.runtime.storageRoot.label'),
+    description: t(locale, 'settings.runtime.storageRoot.description'),
+    tags: ['./data/files', 'backup exports'],
+  },
+]
+
+export const settingsRuntimeItems: SettingsRuntimeItem[] = buildSettingsRuntimeItems(defaultLocale)
+
+export const buildSettingsBackupAction = (locale: Locale): SettingsBackupAction => ({
+  id: 'export-backup',
+  label: t(locale, 'settings.backup.action'),
+  description: t(locale, 'settings.backup.description'),
+  endpoint: '/api/settings/backup',
+  method: 'POST',
+})
+
+export const settingsBackupAction: SettingsBackupAction = buildSettingsBackupAction(defaultLocale)
 
 export const filePanelActions: FilePanelAction[] = [
   {
